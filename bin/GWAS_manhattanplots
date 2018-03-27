@@ -1,0 +1,169 @@
+#!/usr/bin/env Rscript
+#' @(#)GWAS_manhattanplots  2017-10-05  A.Douglas and A.J.Travis
+
+suppressMessages(library(getopt))
+suppressMessages(library(optparse))
+
+#' debug in RStudio
+
+# command-line arguments
+opt1 <- make_option(c("-b", "--bh"), action = "store", default = 0)
+opt2 <- make_option(c("-c", "--chromosome"), action = "store", default = "1:23")
+opt3 <- make_option(c("-i", "--input"), action = "store", default = NULL)
+opt4 <- make_option(c("-o", "--output"), action = "store", default = "manhattan")
+opt5 <- make_option(c("-q", "--qqplot"), action = "store_true", default = FALSE)
+opt6 <- make_option(c("-v", "--verbose"), action = "store_true", default = FALSE)
+opt7 <- make_option(c("-y", "--ymax"), action = "store", default = "max")
+
+#' debug in RStudio
+#' args <- c('-b', '0.1', '-q', '-y', '10', '-i', 'files.txt')
+#' opt <- parse_args(OptionParser(option_list = list(opt1, opt2, opt3, opt4, opt5, opt6, 
+#'   opt7)), args = args, positional_arguments = TRUE)
+
+opt <- parse_args(OptionParser(option_list = list(opt1, opt2, opt3, opt4, opt5, opt6, 
+  opt7)), positional_arguments = TRUE)
+
+# limit number of chromosomes
+chr.name <- parse(text = opt$options$chromosome)
+chr.limit <- eval(parse(text = chr.name))
+chr.class <- class(chr.limit)
+if (chr.class == "numeric") {
+  chr.limit <- as.vector(chr.limit)
+} else {
+  if (chr.class != "integer") {
+    stop("list of chromosomes required e.g. 1:23")
+  }
+}
+
+# PNG output file
+output.file <- paste(sep = "", opt$options$output, ".png")
+
+# check usage
+if (is.null(opt$options$input)) {
+  nplots <- length(opt$args)
+} else {
+  title <- read.table(opt$options$input, col.names = c("filename", "title"), colClasses = "character", 
+    sep = "\t")
+  nplots <- length(title$filename)
+}
+
+if (nplots == 0) {
+  stop("one or more '.manh' files required")
+}
+
+# script location
+script <- get_Rscript_filename()
+basename <- dirname(script)
+
+# source library
+lib.name <- paste(sep = "/", basename, "GWAS_manhattanplots.R")
+source(lib.name)
+
+# Required for Benjamini-Hochberg correction
+suppressMessages(library(multtest))  # include check if installed
+
+# sides
+BOTTOM <- 1
+LEFT <- 2
+TOP <- 3
+RIGHT <- 4
+
+# outer margins (inches)
+OM_BOTTOM <- 0
+OM_LEFT <- 0.4
+OM_TOP <- 0.2
+OM_RIGHT <- 0.4
+
+# inner margins (inches)
+IM_BOTTOM <- 0
+IM_LEFT <- 0.4
+IM_TOP <- 0.2
+IM_RIGHT <- 0
+IM_LAST <- 0.8
+
+# overall plot height (inches)
+PLOTH <- 1.4
+
+# Manhattan plot aspect ratio (width / height)
+MPLOTR <- 5
+
+# Manhattan plot dimensions (inches)
+MPLOTH <- IM_TOP + PLOTH + IM_BOTTOM
+MPLOTW <- IM_LEFT + PLOTH * MPLOTR + IM_RIGHT
+
+# QQ plot dimensions (inches)
+QPLOTH <- MPLOTH
+QPLOTW <- IM_LEFT + PLOTH + IM_RIGHT
+
+#' markers <- read.table('marker_pos.txt', header = TRUE)
+#' blocks <- read.table('qtl_blocks.txt', header = TRUE)
+
+# page layout
+page.height <- OM_TOP + (MPLOTH * nplots) + IM_LAST + OM_BOTTOM
+plot.height <- c(rep.int(1, nplots - 1), (MPLOTH + IM_LAST)/MPLOTH)
+if (opt$options$qqplot) {
+  page.width <- OM_LEFT + MPLOTW + QPLOTW + OM_RIGHT
+  png(output.file, width = page.width, height = page.height, unit = "in", res = 300)
+  layout(mat = matrix(c(1:(nplots * 2)), nplots, 2, byrow = TRUE), widths = c(MPLOTW, 
+    QPLOTW), heights = plot.height)
+} else {
+  page.width <- OM_LEFT + MPLOTW + OM_RIGHT
+  png(output.file, width = page.width, height = page.height, unit = "in", res = 300)
+  layout(mat = matrix(c(1:(nplots)), nplots, 1, byrow = TRUE), heights = plot.height)
+}
+
+# outer margins: c(bottom, left, top, right)
+par(omi = c(OM_BOTTOM, OM_LEFT, OM_TOP, OM_RIGHT), lend = "square")
+
+# stack plots
+for (i in 1:nplots) {
+  
+  # only show axis on last stacked plot
+  stack <- i < nplots
+  if (stack) {
+    par(mai = c(IM_BOTTOM, IM_LEFT, IM_TOP, IM_RIGHT))
+  } else {
+    par(mai = c(IM_BOTTOM + IM_LAST, IM_LEFT, IM_TOP, IM_RIGHT))
+  }
+  
+  # read SNPs from file
+  if (is.null(opt$options$input)) {
+    snp <- read.table(opt$args[i], header = TRUE)
+  } else {
+    snp <- read.table(title$filename[i], header = TRUE)
+  }
+  
+  # exclude P <= 0 (error flag?)
+  snp <- snp[snp$P > 0, ]
+  
+  # calculate BH (Benjamini-Hochberg) adjusted P values
+  mt <- mt.rawp2adjp(snp$P, proc = "BH")
+  ind <- mt$index
+  snp <- cbind(snp, BH = mt$adjp[order(ind), 2])
+  
+  # Manhattan plot
+  manhattan(snp, markers = NULL, blocks = NULL, limitchromosomes = chr.limit, ymax = opt$options$ymax, 
+    suggestiveline = 4, genomewideline = FALSE, highlight = opt$options$bh, stack = stack)
+  
+  # sub-plot title (left-justified)
+  if (!is.null(opt$options$input)) {
+    text <- title$title[i]
+  } else {
+    text <- sub(".manh", "", basename(opt$args[i]))
+  }
+  mtext(text, side = TOP, line = -0.8, adj = 0.02, cex = 0.8)
+  
+  # QQ plot
+  if (opt$options$qqplot) {
+    qq(snp, limitchromosomes = chr.limit, ymax = opt$options$ymax, highlight = opt$options$bh, 
+      stack = stack)
+  }
+}
+
+# add axis labels in outer margins
+mtext(expression("          " - log[10](italic(p))), outer = TRUE, side = LEFT, line = 0)
+
+# check device was closed
+if (dev.off() != 1) {
+  stop("error: Graphics device still open")
+}

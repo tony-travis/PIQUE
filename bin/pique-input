@@ -1,0 +1,1449 @@
+#!/usr/bin/perl -w
+#@(#)pique-input.pl  2017-07-24  A.J.Travis and A.Douglas
+
+#
+# PIQUE - Parallel Identification Of QTL's using EMMAX
+#
+# Create working directory and individual phenotype files for EMMA-x
+# from multiple phenotypes in tab-separated phenotype and .ped file.
+#
+
+use warnings;
+use strict;
+use File::Basename;
+use File::Path;
+use Getopt::Long;
+use Cwd;
+
+# program name and version
+use Readonly;
+Readonly my $NAME => "pique";
+use version; our $VERSION = "0.0.1";
+
+#
+# command-line options
+#
+
+# in_prefix: input prefix for the input files
+my $opt_i;
+
+# out_prefix: output prefix for the output files
+my $opt_o;
+
+# debug: saves intermediate files for debugging
+my $opt_d = 0;
+
+# verbose: display all output from plink and smartpca
+my $opt_v;
+
+# default input format = .ped + .map
+my $opt_f = "ped";
+
+# pheno_file: phenotype file d(efaults [in_prefix].pheno
+my $opt_p;
+
+# group[,group...]: genotype sub-groups to be analysed
+my $opt_g = "all";
+
+# number: minimum number of genotypes in sub-group (default = 20)
+my $opt_n = 20;
+
+# kinship matrix (BN, default = IBS)
+my $opt_k = "IBS";
+
+# covar_file: generate covariate file [out_prefix].covar
+my $opt_c;
+
+# number of Eigenvectors to include
+my $opt_e = 5;
+
+# MAF: Minor Allele Frequency
+my $opt_m;
+
+# missing: maximum per-SNP missing
+my $opt_x;
+
+#
+# executable programs
+#
+
+my $PLINK;
+my $PLINK_OPT;
+my $EIGENSTRAT;
+my $EMMAX_KIN;
+
+#
+# file names
+#
+
+# path name of .pheno file
+my $pheno_file;
+my $logfile;
+my $rc_prefix;
+my $ped_file;
+my $map_file;
+my $rped_file;
+my $rmap_file;
+my $tped_file;
+my $tfam_file;
+my $cov_file;
+
+#
+# global variables
+#
+
+# phenotype data values indexed by id
+my %phe = ();
+
+# genotype sub-groups
+my %grp = ();
+
+# optional covariate values indexed by id
+my %cov = ();
+
+# list of genotypes
+my @gid_list;
+
+#
+# main program
+#
+
+{
+    # list of phenotypes
+    my @phe_list;
+
+    # pathname of new .ped file
+    my $new_ped_file;
+
+    # population sub-group
+    my $group;
+
+    # display help if no arguments given
+    if ( $#ARGV < 0 ) {
+        usage();
+    }
+
+    # parse command-line options
+    options();
+
+    # check dependencies are installed
+    programs();
+
+    # generate pathnames of files from prefixes
+    files();
+
+    # write start time to log file
+    system("date > $logfile");
+
+    # pre-process input data
+    $rped_file = recode( $opt_i, $rc_prefix, $opt_f );
+
+    # store phenotype data indexed by genotype
+    @phe_list = store($pheno_file);
+
+    # create output directory
+    must_mkdir($opt_o);
+    cd($opt_o);
+
+    # filter accessions present for phenotype and genotype
+    $new_ped_file = filter( "../$rc_prefix", \@phe_list );
+
+    # QC for all groups
+    qc($opt_o);
+
+    # MAF for all groups
+    maf($opt_o);
+
+    # read existing .covar file or create one
+    if ( defined $opt_c ) {
+        if ($opt_c) {
+            $cov_file = read_covar($opt_c);
+        }
+        elsif ( create_covar( $new_ped_file, "../$rmap_file", $opt_e ) ) {
+
+            # exclude any outliers detected by "smartpca"
+            exclude($new_ped_file);
+        }
+    }
+
+    # transpose recoded .ped file
+    transpose($opt_o);
+
+    # create kinship file
+    kin($opt_o);
+
+    # output EMMAX-format data files
+    output( $opt_o, \@phe_list );
+
+    # back to parent directory
+    cd("..");
+
+    if ( scalar keys %grp > 1 ) {
+        while ( $group = each %grp ) {
+            must_mkdir("$opt_o\_$group");
+            cd("$opt_o\_$group");
+
+            # extract sub-group
+            extract("$group");
+
+            # QC for sub-group
+            qc("$opt_o\_$group");
+
+            # MAF for sub-group
+            maf("$opt_o\_$group");
+
+            # transpose sub-group
+            transpose("$opt_o\_$group");
+
+            # create kinship file for sub-group
+            kin("$opt_o\_$group");
+
+            # output EMMAX-format data files for sub-group
+            output( "$opt_o\_$group", \@phe_list );
+
+            # remove temporary files
+            tidy_up();
+
+            # back to parent directory
+            cd("..");
+        }
+    }
+
+    # remove temporary files
+    tidy_up();
+
+    # write end-time to log file
+    system("date >> $logfile");
+
+    exit 0;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 options
+ 
+ Usage       : options()
+ Parameters  : none
+ Returns     : null
+ Description : Parse command-line and set options
+ External    : $opt_n, $opt_d, $opt_v, $opt_c, $opt_f, $opt_k,
+             : $opt_i, $opt_o, $opt_p, $opt_g, $opt_m, $opt_x
+ 
+=cut
+
+sub options {
+    GetOptions(
+        "d"   => \$opt_d,
+        "v"   => \$opt_v,
+        "c:s" => \$opt_c,
+        "f=s" => \$opt_f,
+        "k:s" => \$opt_k,
+        "i=s" => \$opt_i,
+        "o=s" => \$opt_o,
+        "p=s" => \$opt_p,
+        "g=s" => \$opt_g,
+        "n=s" => \$opt_n,
+        "e=s" => \$opt_e,
+        "m=s" => \$opt_m,
+        "x=s" => \$opt_x
+    ) or usage();
+
+    # input and output prefixes are mandatory
+    if ( !defined $opt_i && defined $opt_o ) {
+        usage();
+    }
+
+    # don't overwrite existing output directory
+    if ( -e $opt_o ) {
+        error_exit("output directory $opt_o already exists");
+    }
+
+    # sanity check
+    if ( $opt_i eq $opt_o ) {
+        error_exit("input prefix same as output prefix");
+    }
+    return;
+}
+
+sub programs {
+
+    # "plink" is called "p-link" on Ubuntu/Debian systems
+    $PLINK = must_have("p-link");
+
+    #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --missing-genotype 0";
+    $PLINK_OPT = "--missing-genotype 0";
+
+    # generate or use previous "pique-input" generated .covar file
+    if ( defined $opt_c ) {
+
+        # look for "EIGENSOFT" smartpca
+        $EIGENSTRAT = must_have("smartpca");
+    }
+
+    # look for "emmax-kin"
+    $EMMAX_KIN = must_have("emmax-kin");
+
+    # define what method to use to generate kinship matrix (default IBS)
+    if ( $opt_k eq '' || $opt_k eq 'IBS' ) {
+        $opt_k = '-s';
+    }
+    elsif ( $opt_k eq 'BN' ) {
+        $opt_k = '';
+    }
+    else {
+        usage();
+    }
+
+    # input format
+    if ( defined $opt_f ) {
+        if ( $opt_f ne 'ped' && $opt_f ne 'tped' && $opt_f ne 'vcf' ) {
+            usage();
+        }
+    }
+
+    # number of eigenvectors to include
+    if ( defined $opt_e ) {
+        if ( !defined $opt_c ) {
+            error_exit("Can't define $opt_e Eigenvectors with own .covar file");
+        }
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 files
+ 
+ Usage       : files()
+ Parameters  : none
+ Returns     : null
+ Description : create filenames from i/o prefixes
+ External    : $logfile = diagnostic log file
+             : $rc_prefix = prefix for recode 1/2 file names
+             : $ped_file = raw PLINK format SNP data
+             : $map_file = genotype map file
+             : $rped_file = 1/2 recoded .ped file
+             : $rmap_file = map file for 1/2 recoded .ped file
+             : $tped_file = transposed .ped file
+             : $tfam_file = transposed .map file
+
+=cut
+
+sub files {
+
+    $logfile   = getcwd() . "/$opt_o-pique-input.log";
+    $rc_prefix = "$opt_i\_recode12";
+    $ped_file  = "$opt_i.ped";
+    $map_file  = "$opt_i.map";
+    $rped_file = "$rc_prefix.ped";
+    $rmap_file = "$rc_prefix.map";
+    $tped_file = "$opt_i.tped";
+    $tfam_file = "$opt_i.tfam";
+    if ( defined $opt_p ) {
+        $pheno_file = $opt_p;
+    }
+    else {
+        $pheno_file = "$opt_i.pheno";
+    }
+    $cov_file = "$opt_o.covar";
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 recode
+ 
+ Usage       : recode($input, $output, $type)
+ Parameters  : $input = input prefix
+             : $output = output prefix
+             : $type = data type: "vcf", "tped", "ped"
+ Returns     : "$output.ped" = pathname of recoded file
+ Description : Recode IUPAC coded genotypes in PLINK 1/2 format
+ Files       : "$input.ped" = IUPAC coded genotypes
+             : "$input.map" = genotype map file
+             : "$input.tped" = transposed .ped file
+             : "$input.tfam" = transposed .map file
+             : "$output.ped" = PLINK 1/2 format genotypes
+              
+=cut
+
+sub recode {
+    my ( $input, $output, $type ) = @_;
+
+    if ($opt_v) {
+        print "Pre-process input data...\n";
+    }
+
+    # don't recode again if the recoded files already exist
+    if ( -r "$output.ped" and -r "$output.map" ) {
+        if ($opt_v) {
+            print "Use existing $output.ped and $output.map files...\n";
+        }
+        return "$output.ped";
+    }
+
+    # convert .vcf to .ped + .map
+    if ( $type eq "vcf" ) {
+        must_exist("$input.vcf");
+        plink("--recode --vcf $input.vcf --out $input");
+    }
+
+    # convert .tped + .tfam to .ped + .map
+    if ( $type eq "tped" ) {
+        must_exist("$input.tped");
+        must_exist("$input.tfam");
+        plink("--recode --tped $input.tped --tfam $input.tfam --out $input");
+    }
+
+    # recode .ped + .map
+    must_exist("$input.ped");
+    must_exist("$input.map");
+    plink("--recode12 --file $opt_i --out $output");
+
+    # check output files
+    must_exist("$output.ped");
+    must_exist("$output.map");
+
+    # path of recoded file
+    return "$output.ped";
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 plink
+ 
+ Usage       : plink($args)
+ Parameters  : $args = "plink" arguments
+ Returns     : null
+ Description : Execute "plink" command-line
+ External    : $PLINK = path to "plink" executable
+             : $PLINK_OPT = default "plink" options
+ Files       : depends on arguments to "plink"
+
+=cut
+
+sub plink {
+    my ($args) = @_;    # command-line arguments
+
+    run("$PLINK $PLINK_OPT $args");
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 store
+ 
+ Usage       : store($name)
+ Parameters  : $name = name of phenotype file
+ Returns     : @list = list of phenotype names
+ Description : Store phenotype values in %phe{}
+             : Input format = genotype, group, phenotype, phenotype,...
+ External    : %phe{} = phenotype by genotype lookup table
+             : %grp{} = group names
+
+=cut
+
+sub store {
+    my ($name) = @_;
+
+    my $file;    # phenotype file handle
+    my @list;    # phenotype file header
+    my @col;     # column in phenotype file
+    my $gid;     # accession ID
+
+    if ($opt_v) {
+        print "Store phenotype data indexed by genotype...\n";
+    }
+
+    # check if .pheno file exists and is readble
+    $file = must_read($name);
+
+    # read header from phenotype file
+    $_ = <$file>;
+    chomp;
+    @list = split;
+
+    # first col = accession ID
+    shift @list;
+
+    # second col = group
+    shift @list;
+
+    # hash phenotypes and genotype groups
+    while (<$file>) {
+        chomp;
+        @col = split;
+        $gid = $col[0];
+
+        # hash phenotypes by id
+        if ( not defined $phe{$gid} ) {
+            $phe{$gid} = [@col];
+        }
+        else {
+            error_exit("error - id $gid not unique in $file");
+        }
+
+        # hash genotype groups (value = count)
+        $gid = $col[1];
+        if ( !exists $grp{$gid} ) {
+            $grp{$gid} = 1;
+        }
+        else {
+            $grp{$gid}++;
+        }
+    }
+    must_close($file);
+
+    # delete groups with < minimum number of genotypes (default = 20)
+    while ( $gid = each %grp ) {
+        if ( $grp{$gid} < $opt_n ) {
+            print
+              "Warning: group $gid ignored ($grp{$gid} < $opt_n genotypes)\n";
+            delete $grp{$gid};
+        }
+    }
+
+    # return list of phenotypes
+    return @list;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 filter
+ 
+ Usage       : filter($in_ped_file, \@phe_name)
+ Parameters  : $in_ped_file = name of 1/2 coded .ped file
+             : @phe_name = list of phenotype names
+ Returns     : $out_ped_file = name of filtered .ped file
+ Description : filter genotypes common to .ped file and stored phenotypes
+ Files       : $out_ped_file = filtered .ped file
+             : $out_phe_file = filtered .pheno file
+ External    : %phe{} = phenotype by genotype lookup table
+             : $nped = number of unique id's in .ped file
+ 
+=cut
+
+sub filter {
+    my ( $in, $phe_name ) = @_;
+
+    my $in_ped_file;
+    my $in_ped;
+    my $in_map_file;
+    my $in_map;
+    my $out_ped_file;
+    my $out_ped;
+    my $out_map_file;
+    my $out_map;
+    my $out_phe_file;
+    my $out_phe;
+    my $line;
+    my $id;
+    my $fam;
+    my $nped;           # number of unique id's in .ped file
+    my $nmissing;       # number of missing id's
+    my @ped_missing;    # list of id's missing from .ped file
+    my @phe_missing;    # list of id's missing from phenotype file
+    my $nphe;           # number of uniq id's in phenotype file
+
+    if ($opt_v) {
+        print "Filter accessions for phenotype from $in...\n";
+    }
+
+    # input 1/2 coded .ped file
+    $in_ped_file = $in . ".ped";
+    $in_ped      = must_read($in_ped_file);
+
+    # .map file for 1/2 coded .ped file
+    $in_map_file = $in . ".map";
+    $in_map      = must_read($in_map_file);
+
+    # output filtered 1/2 coded .ped file
+    $out_ped_file = $opt_o . ".ped";
+    $out_ped      = must_write($out_ped_file);
+
+    # output .map file
+    $out_map_file = $opt_o . ".map";
+    $out_map      = must_write($out_map_file);
+
+    # output filtered EMMAX format .pheno file
+    $out_phe_file = $opt_o . ".pheno";
+    $out_phe      = must_write($out_phe_file);
+
+    # clone original .map file
+    while (<$in_map>) {
+        print $out_map $_;
+    }
+    must_close($out_map);
+    must_close($in_map);
+
+    # .pheno header (family_id accession_id group phenotype, phenotype,...)
+    print $out_phe "family_id\tid\tgroup";
+    foreach my $col (@$phe_name) {
+        print $out_phe "\t$col";
+    }
+    print $out_phe "\n";
+
+    $nped = 0;
+    while ( $line = <$in_ped> ) {
+        $nped++;
+        chomp $line;
+        ( $fam, $id ) = split q{ }, $line;
+
+        # perform sanity checks - all pheno id's must be unique
+        if ( defined $phe{$id} ) {
+            if ( $phe{$id}[0] eq "-1" ) {
+                error_exit("error - id $id in $in_ped_file not unique");
+            }
+            else {
+                print $out_ped "$line\n";
+                print $out_phe "$fam\t$id";
+                my $i = 1;
+                print $out_phe "\t$phe{$id}[$i++]";
+                foreach (@$phe_name) {
+                    print $out_phe "\t$phe{$id}[$i++]";
+                }
+                print $out_phe "\n";
+                $phe{$id}[0] = -1;
+            }
+        }
+        else {
+            push @ped_missing, $id;
+        }
+    }
+    must_close($out_phe);
+    must_close($out_ped);
+    must_close($in_ped);
+
+    # id's in .ped file but not present in phenotype file
+    if ($opt_v) {
+        print
+          "Checking concurrence of id's in .ped and .pheno input files...\n";
+        print "\nTotal number of accession ids in $in_ped_file: $nped\n";
+    }
+    $nmissing = scalar(@ped_missing);
+    if ( $nmissing == $nped ) {
+        error_exit("no matching id's found in $pheno_file and $in_ped_file\n");
+    }
+    else {
+        print
+"Number of accession id's in $in_ped_file not present in $pheno_file: $nmissing\n";
+
+        foreach (@ped_missing) {
+            print "'$_' ";
+        }
+    }
+
+    # id's in phenotype file but not present in .ped file
+    for my $id ( keys %phe ) {
+        if ( $phe{$id}[0] ne "-1" ) {
+            push @phe_missing, $id;
+        }
+    }
+    $nphe = keys(%phe);
+    print "\n";
+    print "Total number of accession id's in $pheno_file: $nphe\n";
+    $nmissing = scalar(@phe_missing);
+    print
+"Number of accession id's in $pheno_file not present in $in_ped_file: $nmissing\n";
+    foreach (@phe_missing) {
+        print "'$_' ";
+    }
+    print "\n";
+    return $out_ped_file;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 qc
+ 
+ Parameters  : $in = prefix of .tped and .tfam files
+ Returns     : null
+ Description : SNP QC (Quality Control) and MAF
+ External    : $opt_o = output prefix
+ Files       : $prefix.ped = filtered .tped file
+             : $prefix.map = filtered .tfam file
+             : $prefix.frq = output MAF file
+ 
+=cut
+
+sub qc {
+    my ($prefix) = @_;
+    my $filt;
+
+    if ($opt_v) {
+        print "Quality control $prefix...\n";
+    }
+
+    $filt = '';
+    if ( defined $opt_m ) {
+        $filt .= "--maf $opt_m ";
+    }
+    if ( defined $opt_x ) {
+        $filt .= "--geno $opt_x ";
+    }
+
+    # SNP QC
+    if ($filt) {
+        plink("$filt --recode --file $prefix --out $prefix");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 extract
+ 
+ Parameters  : $group = sub-group to extract
+ Returns     : null
+ Description : extract phenotype and genotype sub-groups
+ External    : $opt_o = output prefix
+ Files       : 
+ 
+=cut
+
+sub extract {
+    my ($group) = @_;
+
+    my $pfile;    # phenotype file containing all sub-groups
+    my $gfile;
+    my @col;
+
+    $pfile = must_read("../$opt_o/$opt_o\.pheno");
+
+    # extract sub-group phenotypes
+    $gfile = must_write("$opt_o\_$group\.pheno");
+    while ( my $line = <$pfile> ) {
+        @col = split " ", $line, 4;
+        if ( $col[2] eq $group ) {
+            print $gfile $line;
+        }
+    }
+    must_close($gfile);
+
+    # extract sub-group genotypes
+    plink(
+"--file ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode --out $opt_o\_$group"
+    );
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 create_covar
+ 
+ Parameters  : ped = PLINK format .ped file
+               map = PLINK format .map file
+               evec = number of Eigenvectors
+ Returns     : number of outliers removed by "smartpca"
+ Description : Create EMMAX format .covar file
+ External    : $opt_o = output prefix
+ Files       : "$opt_o.evec" = Eigenvectors from "smartpca"
+             : "$opt_o.covar" = .covar output file
+ 
+=cut
+
+sub create_covar {
+    my ( $ped, $map, $evec ) = @_;
+
+    my $line;    # line read from file
+    my @col;     # tab-delimited columns
+    my $id;
+    my $fam;
+    my $ped_id;
+    my $ped_fh;     # .ped file handle
+    my $map_fh;     # .map file handle
+    my $cov_fh;     # .covar file handle
+    my $evec_fh;    # .evec file handle    # back to parent directory
+    my $outlier;    # number of outliers removed by "smartpca"
+    my $nid;        # number of id's
+
+    if ($opt_v) {
+        print "Create $cov_file file...\n";
+    }
+
+    $ped_fh = must_read($ped);
+    $map_fh = must_read($map);
+    $cov_fh = must_write($cov_file);
+
+    # run Eigenstrat "smartpca" program
+    smartpca( $ped, $map, $evec, $opt_o );
+
+    # open "smartpca" output file
+    $evec_fh = must_read("$opt_o.evec");
+
+    # skip header
+    $_ = <$evec_fh>;
+
+    # extract ID and selected number of Eigenvectors
+    $nid     = 0;
+    $outlier = 0;
+    while (<$evec_fh>) {
+        chomp;
+        @col = split;
+        ($id) = ( $col[0] =~ /:(\S+)/x );
+        while ( $line = <$ped_fh> ) {
+            ( $fam, $ped_id ) = split " ", $line, 3;
+            if ( $id eq $ped_id ) {
+                last;
+            }
+            warning("outlier '$ped_id' removed by smartpca");
+            $outlier++;
+        }
+        print $cov_fh "$fam\t$ped_id\t1";
+        my $i = 1;
+        while ( $i <= $evec ) {
+            print $cov_fh "\t$col[$i++]";
+        }
+        print $cov_fh "\n";
+        $gid_list[ $nid++ ] = $id;
+    }
+    must_close($evec_fh);
+    must_close($cov_fh);
+    must_close($ped_fh);
+
+    # return number of outliers removed by "smartpca"
+    return $outlier;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 smartpca
+ 
+ Parameters  : ped = PLINK format .ped file
+               map  = PLINK format .map file
+               evec = number of eigenvectors
+               out = output prefix
+ Returns     : null
+ Description : run smartpca
+ 
+=cut
+
+sub smartpca {
+    my ( $ped, $map, $evec, $out ) = @_;
+
+    my $par_file;    # "smartpca" parameter file name
+    my $par_fh;      # "smartpca" parameter file handle
+
+    $par_file = "$out.par";
+    $par_fh   = must_write($par_file);
+
+    # create parameter file
+    print $par_fh "genotypename: $ped\n";
+    print $par_fh "snpname: $map\n";
+    print $par_fh "indivname: $ped\n";
+    print $par_fh "evecoutname: $out.evec\n";
+    print $par_fh "evaloutname: $out.eval\n";
+    print $par_fh "altnormstyle: NO\n";
+    print $par_fh "numoutevec: $evec\n";
+    must_close($par_fh);
+
+    # run smartpca
+    run("smartpca -p $par_file > $out-smartpca.log");
+
+    # tidy up
+    if ( !$opt_d ) {
+        must_unlink($par_file);
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 exclude
+ 
+ Parameters  : $file = name of input file
+ Returns     : null
+ Description : Update file to exclude outliers detected by "smartpca" 
+ Files       : "$file.tmp" = temporary work file
+
+=cut
+
+sub exclude {
+    my ($file) = @_;
+
+    my $old_file = "$file.tmp";
+    my $old;
+    my $new;
+    my $fam;
+    my $line;
+    my $ped_id;
+
+    must_rename( $file, $old_file );
+    $old = must_read($old_file);
+    $new = must_write($file);
+    foreach my $id (@gid_list) {
+        while ( $line = <$old> ) {
+            ( $fam, $ped_id ) = split " ", $line;
+            if ( $ped_id eq $id ) {
+                print $new $line;
+                last;
+            }
+        }
+    }
+    must_close($old);
+    must_close($new);
+    if ( !$opt_d ) {
+        must_unlink($old_file);
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 read_covar
+ 
+ Parameters  : ped = PLINK format .ped file
+             : cov_name = existing covariate file
+ Returns     : name of covariate file
+ Description : read ids in .ped file from existing covariate file
+ External    : $opt_o = output prefix
+ Files       : "$opt_o.evec" = Eigenvectors from "smartpca"
+             : "$opt_o.covar" = .covar output file
+ 
+=cut
+
+sub read_covar {
+    my ( $ped, $cov_name ) = @_;
+
+    my $ped_fh;    # .ped file handle
+    my $cov_fh;    # .covar file handle
+    my @col;       # tab-delimited columns
+    my $id;
+
+    # re-use existing .covar file
+    if ( $cov_name eq $cov_file ) {
+        if ($opt_v) {
+            print "Reuse $cov_file file...\n";
+        }
+        return $cov_file;
+    }
+
+    # read id's from covariate file present in .ped file
+    if ($opt_v) {
+        print "Read $cov_name file...\n";
+    }
+    $ped_fh = must_read($ped);
+    $cov_fh = must_write($cov_file);
+    while (<$ped_fh>) {
+        chomp;
+        @col = split;
+        $id  = $col[1];
+    }
+    must_close($cov_fh);
+    must_close($ped_fh);
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 transpose
+ 
+ Usage       : transpose($old_map_file)
+ Parameters  : $old_map_file = genotype map file
+ Returns     : null
+ Description : Use plink to create <out_prefix>.tped and <out_prefix>.tfam
+             : from the filtered .ped and the original .map files. Need to
+             : link to the orginal .map file temporarily to run plink.
+ External    : $rmap_file = map file for 1/2 recoded .ped file
+             : $opt_o = output prefix
+ Files       : $opt_o.tped = transposed .ped file
+             : $opt_o.tfam = transposed .map file
+             : $opt_o.frq = MAF (Minor Allele frequency
+
+=cut
+
+sub transpose {
+    my ($prefix) = @_;
+
+    if ($opt_v) {
+        print "Transpose $prefix...\n";
+    }
+    plink("--recode --transpose --file $prefix --out $prefix");
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 maf
+ 
+ Usage       : maf()
+ Parameters  : $prefix = input/output prefix for PLINK
+ Returns     : null
+ Description : Use plink to calculate MAF  (Minor Allele frequency)
+ Files       : $prefix.frq = MAF
+
+=cut
+
+sub maf {
+    my ($prefix) = @_;
+
+    if ($opt_v) {
+        print "\n";
+        print "Calculating MAF...\n";
+    }
+    plink("--freq --file $prefix --out $prefix");
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 kin
+ 
+ Usage       : kin()
+ Parameters  : $tped_prefix = prefix of .tped file
+ Returns     : null
+ Description : create IBS or BN kinship file
+ External    : $opt_k = kinship matrix (default -s = IBS)
+             : $opt_o = output prefix
+ Files       : $tped_prefix.hIBS.kin = kinship file (IBS method)
+             : $tped_prefix.hBN.kin = kinship file (BN method)
+
+=cut
+
+sub kin {
+    my ($tped_prefix) = @_;
+
+    if ($opt_v) {
+        if ( $opt_k eq '-s' ) {
+            print
+"Creating $tped_prefix.hIBS.kin kinship file using IBS method...\n";
+        }
+        else {
+            print
+              "Creating $tped_prefix.hBN.kin kinship file using BN method...\n";
+        }
+    }
+
+    run("$EMMAX_KIN -v -h $opt_k -d 10 $tped_prefix");
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 output
+ 
+ Usage       : output($tfam_prefix, \@list)
+ Parameters  : $tfam_prefix = prefix for tfam file
+ Returns     : null
+ Description : create output directories and files for "pique-run"
+ External    : %phe{} = phenotype by genotype lookup table
+             : $opt_v = verbose output
+ Files       : $new_ped = recoded/filtered .ped file
+
+=cut
+
+sub output {
+    my ( $tfam_prefix, $list ) = @_;
+
+    my $tfam;          # tfam file handle
+    my $pheno_name;    # name of phenotype file
+    my $pheno;         # phenotype file handle
+    my $id;
+    my $fam;
+    my $col;           # phenotype column
+    my $val;           # phenotype value
+
+    if ( defined $opt_v ) {
+        print "Creating phenotype files in sub-directory $opt_o...\n";
+    }
+    $tfam = must_read("$tfam_prefix\.tfam");
+
+    # create sub-dir and .pheno file for each data type in phenotype file
+    $col = 2;
+    print "\n";
+    foreach my $data (@$list) {
+
+        # rewind recoded/filtered .ped file
+        seek( $tfam, 0, 0 );
+
+        # create output directory
+        must_mkdir("$data");
+
+        # create new pheno file (family_id accession_id phenotype_value)
+        $pheno_name = "$data/$data\.pheno";
+        $pheno      = must_write($pheno_name);
+
+        # write family, id and phenotype value for all genotype groups
+        while ( my $line = <$tfam> ) {
+            chomp $line;
+            ( $fam, $id ) = split " ", $line;
+            if ( defined $phe{$id} ) {
+                $val = $phe{$id}[$col];
+                print $pheno "$fam\t$id\t$val\n";
+            }
+        }
+        must_close($pheno);
+        $col++;
+    }
+    must_close($tfam);
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 tidy_up
+ 
+ Parameters  : none
+ Returns     : null
+ Description : tidy up files unless debugging
+ External    : $opt_i = input prefix
+             : $opt_o = output prefix
+ Files       : $rped_file = recoded .ped file
+             : $rmap_file = recoded map file
+             : "$opt_i_recode12.nosex"
+             : "$opt_i_recode12.log"
+             : "$opt_o.log"
+
+=cut
+
+sub tidy_up {
+    my @hit_list = <*.nosex *.log>;
+
+    if ( defined $opt_v ) {
+        print "removing temp files...\n";
+    }
+
+    # remove temp files
+    foreach my $file (@hit_list) {
+        if ( !$opt_d ) {
+            must_unlink($file);
+        }
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 usage
+ 
+ Parameters  : none
+ Returns     : null
+ Description : display correct usage and exit
+ 
+=cut
+
+sub usage {
+    print "\n";
+    print "Program: $NAME\n";
+    print "Version: $VERSION\n";
+    print "Contact: Tony Travis <tony.travis\@abdn.ac.uk>\n";
+    print "         Alex Douglas <a.douglas\@abdn.ac.uk>\n";
+    print "\n";
+    print "Usage: $NAME -i in_prefix -o out_prefix\n";
+    print "              [-d] [-v] [-f in_format] [-k kinship]\n";
+    print "              [-p pheno_file] [-c covar_file [-e n_pc]]\n";
+    print "\n";
+    print "Mandatory parameters:\n";
+    print "\n";
+    print " -i in_prefix: input prefix for the input files\n";
+    print " -o out_prefix: output prefix for the output files\n";
+    print "\n";
+    print "Optional parameters:\n";
+    print "\n";
+    print " -d debug: saves intermediate files for debugging\n";
+    print " -v verbose: display all output from plink and smartpca\n";
+    print " -f in_format: input file format (default = ped)\n";
+    print "    ped = requires in_prefix.ped & in_prefix.map files\n";
+    print "    tped = requires in_prefix.tped & in_prefix.tfam files\n";
+    print "    vcf = requires .vcf filename\n";
+    print " -p pheno_file: phenotype file name\n";
+    print "    Defaults to [in_prefix].pheno\n";
+    print " -g group[,group...]: genotype sub-groups to be analysed\n";
+    print
+      " -n number: minimum number of genotypes in sub-group (default = 20)\n";
+    print " -k kinship: method to calculate kinship matrix\n";
+    print "    Either 'IBS' (default) or 'BN' methods\n";
+    print " -c covar_file: generate covariate file [out_prefix].covar\n";
+    print "    from SNP information in .ped file using smartpca (EIGENSOFT)\n";
+    print " -e n_pc: number of eigenvectors to keep from smartpca\n";
+    print " -m MAF: Minor Allele Frequency\n";
+    print " -x missing: maximum per-SNP missing\n";
+    print "\n";
+    print "Further details and examples are given in the documentation\n";
+    exit -1;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 warning
+ 
+ Usage       : warning($message)
+ Parameters  : $message = warning message
+ Returns     : null
+ Description : Display warning message on STDERR
+
+=cut
+
+sub warning {
+    my ($message) = @_;
+
+    print STDERR "$NAME: warning - $message\n";
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 error_exit
+ 
+ Parameters  : $message
+ Returns     : null
+ Description : Display error message on STDERR and exit
+
+=cut
+
+sub error_exit {
+    my ($message) = @_;
+
+    print STDERR "$NAME: error - $message\n";
+    exit -1;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_have
+ 
+ Parameters  : none
+ Returns     : pathname of executable
+ Description : Must have executable
+
+=cut
+
+sub must_have {
+    my ($program) = @_;
+
+    my $path;    # path to program
+
+    $path = readpipe "which $program";
+    if ( !$path ) {
+        error_exit("Please install $program");
+    }
+    chomp $path;
+    return $path;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_exist
+ 
+ Parameters  : $name = name of file to check
+ Returns     : null
+ Description : File must exist and be readable 
+
+=cut
+
+sub must_exist {
+    my ($name) = @_;
+
+    my $file;    # file handle
+
+    if ( !-r $name ) {
+        error_exit("$name does not exist");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_read
+ 
+ Parameters  : $name = name of file to open
+ Returns     : $file = file handle
+ Description : Must open a file for reading 
+
+=cut
+
+sub must_read {
+    my ($name) = @_;
+
+    my $file;    # file handle
+
+    if ( !open $file, '<', "$name" ) {
+        error_exit("Can't read $name");
+    }
+    return $file;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_write
+ 
+ Parameters  : $name = name of file to open
+ Returns     : $file = file handle
+ Description : Must open a file for writing
+ 
+=cut
+
+sub must_write {
+    my ($name) = @_;
+
+    my $file;    # file handle
+
+    if ( !open $file, '>', $name ) {
+        error_exit("Can't write $name");
+    }
+    return $file;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_close
+ 
+ Parameters  : $file = file handle to close
+ Returns     : null
+ Description : Must close an open file handle
+ 
+=cut
+
+sub must_close {
+    my ($file) = @_;
+
+    if ( !close $file ) {
+        error_exit("Can't close $file");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_rename
+ 
+ Parameters  : $old = old file name
+             : $new = new file name
+ Returns     : null
+ Description : Must rename a file
+ 
+=cut
+
+sub must_rename {
+    my ( $old, $new ) = @_;
+
+    if ( !rename( $old, $new ) ) {
+        error_exit("Can't rename $old to $new");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_link
+ 
+ Parameters  : $name = existing file name
+             : $link = new link
+ Returns     : null
+ Description : Must link to a file
+ 
+=cut
+
+sub must_link {
+    my ( $name, $link ) = @_;
+
+    if ( -l $link ) {
+        if ( readlink $link ne $name ) {
+            must_unlink($link);
+        }
+    }
+    else {
+        if ( !symlink $name, $link ) {
+            error_exit("Can't link $name to $link");
+        }
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_unlink
+ 
+ Parameters  : $name = name of file to unlink
+ Returns     : null
+ Description : Must unlink a file
+ 
+=cut
+
+sub must_unlink {
+    my ($name) = @_;
+
+    if ( !-e $name ) {
+        error_exit("Link $name does not exist");
+    }
+    elsif ( !unlink $name ) {
+        error_exit("Can't unlink $name");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_mkdir
+ 
+ Parameters  : $dir = name of directory to create
+ Returns     : null
+ Description : Must create a directory
+ 
+=cut
+
+sub must_mkdir {
+    my ($dir) = @_;
+
+    if ( -e $dir ) {
+        error_exit("Directory $dir already exists");
+    }
+    elsif ( !mkpath($dir) ) {
+        error_exit("Can't create directory $dir");
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 cd
+ 
+ Parameters  : $dir = destination directory
+ Returns     : null
+ Description : Change directory
+ 
+=cut
+
+sub cd {
+    my ($dir) = @_;
+
+    if ( defined $opt_v ) {
+        print "cd $dir\n";
+    }
+    chdir($dir);
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 run
+ 
+ Parameters  : $cmd = command-line to run
+ Returns     : null
+ Description : run a command
+ External    : $logfile = capture command output to file
+             : $opt_v = verbose output
+ 
+=cut
+
+sub run {
+    my ($cmd) = @_;
+
+    # log command output to file
+    system "echo $cmd >> $logfile";
+
+    # output to screen and logfile in verbose mode
+    if ( defined $opt_v ) {
+        print "$cmd\n";
+        $cmd .= " | tee -a $logfile 2>&1";
+    }
+
+    # default append command output to log file
+    else {
+        $cmd .= " >> $logfile 2>&1";
+    }
+
+    # execute command
+    system $cmd;
+    return;
+}

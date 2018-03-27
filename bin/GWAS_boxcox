@@ -1,0 +1,34 @@
+#!/usr/bin/env Rscript
+# @(#)GWAS_boxcox  2016-09-07  A.Douglas and A.J.Travis
+
+if (!require("forecast")) install.packages("forecast")
+
+# command-line arguments from argv
+args <- commandArgs(trailingOnly = TRUE)
+
+# input file
+input <- args[1]
+
+# output file
+output <- args[2]
+
+box_cox_df <- function(x) {
+  trans_pheno <- matrix(NA, nrow = nrow(x), ncol = (ncol(x) - 2))
+  colnames(trans_pheno) <- colnames(x)[-c(1:2)]
+  lambda <- rep(NA, ncol(trans_pheno))
+  accs <- x[,1:2]
+  for(i in 3:ncol(x)){
+    lambda[i - 2] = BoxCox.lambda(x[,i])
+    trans_pheno[,i - 2] = BoxCox(x[,i], lambda[i - 2])
+  }
+  trans_pheno <- cbind(accs, as.data.frame(trans_pheno))
+  return(list(trans = trans_pheno, lambda = lambda))
+}
+
+# read phenotype file
+data <- read.table(file = input, header = FALSE)
+result <- box_cox_df(data)
+data <- result$trans
+lambda <- result$lambda
+print(lambda)
+write.table(data, file = output, row.names = FALSE, col.names = FALSE, quote = FALSE)

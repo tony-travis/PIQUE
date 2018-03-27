@@ -1,0 +1,588 @@
+#!/usr/bin/perl -w
+#@(#)pique-run.pl  2017-07-17  A.J.Travis and A.Douglas
+
+#
+# Run emma-x with or without a covariate file for each phenotype
+# Parse .tped format SNP and EMMA-x .ps and save files to create
+# input for Manhattan plots in each phenotype directory
+#
+
+use warnings;
+use strict;
+use File::Basename;
+use Getopt::Long;
+use Parallel::ForkManager;
+use File::Slurp qw(read_dir);
+
+# program name and version
+use Readonly;
+Readonly my $NAME => "pique-run";
+use version; our $VERSION = "0.0.1";
+
+# software version
+my $vers = "0.0.1";
+
+# parallel environment
+my $MAX_PROCESSES = 0;
+my $pm;
+
+# command-line
+my $cmd;
+
+# input line
+my $line;
+
+# probability value
+my $pval;
+
+# number of id's
+my $nid;
+
+# tab-delimited fields
+my @field;
+
+# SNP id
+my $snp;
+
+# chromosome number
+my $chr;
+
+# base-pair
+my $bp;
+
+# genomic coordinates
+my $gc;
+
+# Allele 1 code (minor allele)
+my $a1;
+
+# Allele 2 code (major allele)
+my $a2;
+
+# Minor allele frequency
+my $maf;
+
+# Non-missing allele count
+my $nchrobs;
+
+# Direction and magnitude of SNP effect
+my $effect;
+
+# hash of SNP frequency
+my %freq = ();
+
+# hash of SNP frequencies looked up
+my %f_lookup = ();
+
+# hash of genomic coordinates by id
+my %coord = ();
+
+# hash of genomic coordinates looked up
+my %c_lookup = ();
+
+# list of missing probabilities
+my @ps_missing;
+
+# number of missing probabilities
+my $nmissing;
+
+# list of missing coordinates
+my @coord_missing;
+
+# number of coordinates
+my $ncoord;
+
+# .tped file
+my $tped_file;
+
+# .tfam file
+my $tfam_file;
+
+# .pheno file
+my $pheno_file;
+
+# SNP frequency file
+my $freq_file;
+
+# kinship file
+my $kin_file;
+
+# covariate file
+my $covar_file;
+
+# probabilities file
+my $ps_file;
+
+# Manhattan plot data file
+my $man_file;
+
+# phenotype directory
+my $phe_dir;
+
+# phenotype jobs processed
+my @completed = ();
+my @failed    = ();
+
+#
+# command-line options
+#
+
+# debug: saves intermediate files for debugging
+my $opt_d;
+
+# verbose: display all output
+my $opt_v;
+
+# number of concurrent threads
+my $opt_n;
+
+# input prefix
+my $opt_i;
+
+# output prefix
+my $opt_o;
+
+# kinship matrix
+my $opt_k;
+
+# covariate file
+my $opt_c;
+
+# phenotype transformation (BC = Box-Cox, default = none)
+my $opt_t = "none";
+
+#
+# Main program
+#
+
+{
+    my $proc;
+    my $TPED;
+    my $FREQ;
+
+    GetOptions(
+        "d"   => \$opt_d,
+        "v"   => \$opt_v,
+        "n=s" => \$opt_n,
+        "i=s" => \$opt_i,
+        "o=s" => \$opt_o,
+        "k:s" => \$opt_k,
+        "c=s" => \$opt_c,
+        "t=s" => \$opt_t
+
+    ) or usage();
+
+    # input prefix is mandatory
+    unless ( defined $opt_i ) {
+        usage();
+    }
+    unless ( defined $opt_o ) {
+        $opt_o = $opt_i;
+    }
+    $tped_file  = $opt_i . '.tped';
+    $tfam_file  = $opt_i . '.tfam';
+    $pheno_file = $opt_i . '.pheno';
+    $freq_file  = $opt_i . '.frq';
+
+    # run single-threaded by default
+    unless ( defined $opt_n ) {
+        $opt_n = 1;
+    }
+    else {
+        if ( open $proc, "<", "/proc/cpuinfo" ) {
+            while (<$proc>) {
+                if (/^processor/x) {
+                    $MAX_PROCESSES++;
+                }
+            }
+            close $proc;
+            if ( $opt_n > $MAX_PROCESSES ) {
+                print
+"Warning can't run $opt_n threads on this system - default to max = $MAX_PROCESSES threads\n";
+                $opt_n = $MAX_PROCESSES;
+            }
+        }
+        else {
+            print
+"Can't open '/proc/cpuinfo' on this system - default to single thread\n";
+            $opt_n = 1;
+        }
+
+        # spawn a new thread for each phenotype
+        if ( $opt_n > 1 ) {
+            $pm = Parallel::ForkManager->new($opt_n);
+
+            # callbacks run in parent process
+            $pm->run_on_start(
+                sub {
+                    my ( $pid, $ident ) = @_;
+                    print "Starting $ident, pid = $pid\n";
+                }
+            );
+            $pm->run_on_finish(
+                sub {
+                    my ( $pid, $exit_code, $ident ) = @_;
+                    print
+                      "Finished $ident, pid = $pid, exit_code = $exit_code\n";
+                }
+            );
+        }
+    }
+
+    # define what method to use to generate kinship matrix (default IBS)
+    if ( $opt_k eq '' || $opt_k eq 'IBS' ) {
+        $opt_k = 'IBS';
+    }
+    elsif ( $opt_k ne 'BN' ) {
+        usage();
+    }
+    $kin_file = $opt_i . ".h" . $opt_k . ".kinf";
+
+    # covariate file is optional
+    if ( defined $opt_c ) {
+        $covar_file = $opt_c;
+    }
+
+    # work in sub-directory
+    cd($opt_i);
+
+    # check if .tped file exists and is readable
+    unless ( -r $tped_file ) {
+        error_exit("$NAME: Can't read $tped_file");
+    }
+
+    # check if .tfam file exists and is readable
+    unless ( -r $tfam_file ) {
+        error_exit("$NAME: Can't read $tfam_file");
+    }
+
+    # check if .pheno file exists and is readable
+    unless ( -r $pheno_file ) {
+        error_exit("$NAME: Can't read $pheno_file");
+    }
+
+    # check if .kin file exists and is readable
+    unless ( -r $kin_file ) {
+        error_exit("$NAME: Can't read $kin_file");
+    }
+
+    # check if optional .covar file exists and is readable
+    if ( defined $covar_file ) {
+        unless ( -r $covar_file ) {
+            error_exit("$NAME: Can't read $covar_file");
+        }
+    }
+
+    # open .tped file and hash id's
+    $TPED = must_read($tped_file);
+    while ( $line = <$TPED> ) {
+        chomp $line;
+        @field = split " ", $line, 5;
+        $chr   = $field[0];
+        $snp   = $field[1];
+        $bp    = $field[3];
+
+        # id's must be unique
+        if ( not defined( $coord{$snp} ) ) {
+            $coord{$snp} = "$chr\t$bp";
+        }
+        else {
+            error_exit("$NAME: error - id $snp in $tped_file not unique\n");
+        }
+    }
+    close($TPED);
+
+    # open .frq file and hash id's
+    $FREQ = must_read($freq_file);
+    while ( $line = <$FREQ> ) {
+        chomp $line;
+        @field   = split " ", $line, 6;
+        $chr     = $field[0];
+        $snp     = $field[1];
+        $a1      = $field[2];
+        $a2      = $field[3];
+        $maf     = $field[4];
+        $nchrobs = $field[5];
+
+        # id's must be unique
+        if ( not defined( $freq{$snp} ) ) {
+            $freq{$snp} = "$a1\t$a2\t$maf\t$nchrobs";
+        }
+        else {
+            error_exit("$NAME: error - SNP id $snp in $freq_file not unique\n");
+        }
+    }
+    close($FREQ);
+
+    # run EMMA-X in separate thread for each phenotype
+    opendir( $phe_dir, "." )
+      || error_exit("$NAME: Can't open directory $opt_i");
+    foreach my $subdir ( readdir($phe_dir) ) {
+
+        # only read directories
+        if ( !-d "$subdir" ) {
+            next;
+        }
+
+        # ignore current and parent sub-directory
+        if ( $subdir eq '.' or $subdir eq '..' ) {
+            next;
+        }
+
+        # fork and return pid of child in parent thread:
+        if ( $opt_n > 1 ) {
+            my $pid = $pm->start($subdir) and next;
+        }
+
+        # run EMMAX in sub-directory
+        emmax( "$subdir", $covar_file, $opt_t );
+
+        # terminate child process
+        if ( $opt_n > 1 ) {
+            $pm->finish;
+        }
+    }
+
+    # tidy up
+    closedir($phe_dir);
+    if ( $opt_n > 1 ) {
+        $pm->wait_all_children;
+    }
+    print "Analysis complete\n\n";
+
+    # normal exit
+    exit 0;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 cd
+ 
+ Parameters  : $dir = destination directory
+ Returns     : null
+ Description : Change directory
+ 
+=cut
+
+sub cd {
+    my ($dir) = @_;
+
+    if ( defined $opt_v ) {
+        print "cd $dir\n";
+    }
+    chdir($dir);
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 emmax
+
+ Usage       : emmax($dir, $covar_file, $transform)
+ Parameters  : $dir = phenotype directory
+             : $covar = covariate file name
+             : $transform = phenotype transform
+ Returns     : null
+ Description : run EMMA-X for one phenotype
+
+=cut
+
+sub emmax {
+    my ( $dir, $covar, $transform ) = @_;
+
+    my $phe;           # penotype name;
+    my $phe_file;      # phenotype file name
+    my $phe_prefix;    # EMMAX output prefix
+    my $PHE;           # phenotype file handle
+    my $PS;            # probabilities file name
+    my $MANH;          # Manhattan data file
+    my $val;           # phenotype value;
+
+    # work in sub-directory
+    cd($dir);
+
+    # check .pheno file for this phenotype exists and is readable
+    ($phe_file) = glob "*.pheno";
+    $phe = basename( $phe_file, '.pheno' );
+    if ( $transform eq "BC" ) {
+        $phe_file = "$phe\_bc.pheno";
+        system "GWAS_boxcox $phe\.pheno $phe_file";
+    }
+    open( $PHE, "<", $phe_file )
+      or error_exit("$NAME: Can't open $phe_file");
+    while (<$PHE>) {
+        chomp;
+        @field = split;
+        $val   = $field[2];
+        unless ( $val =~ /^-?\d+\.?\d*$/x || $val eq 'NA' ) {
+            print "$NAME: WARNING phenotype $phe contains non-numeric value:\n";
+            print "\t'$val' - EMMA-X not run\n";
+            $val = "";
+            last;
+        }
+    }
+    close($PHE);
+
+    if ( $val eq "" ) {
+
+        # terminate child process
+        if ( $opt_n > 1 ) {
+            $pm->finish;
+        }
+        next;
+    }
+
+    # run EMMA-X
+    $phe_prefix = $dir . "_" . $opt_o;
+    $cmd =
+"nice emmax -d 10 -t ../$opt_i -p $phe_file -k ../$kin_file -o $phe_prefix";
+    if ($covar) {
+        $cmd .= " -c ../$covar";
+    }
+    print "processing phenotype $phe...\n\n";
+    print "$cmd\n";
+    system("$cmd");
+
+    # check if .ps file was created
+    $ps_file = $phe_prefix . '.ps';
+    open( $PS, "<", $ps_file )
+      or error_exit("$NAME: Can't open $ps_file");
+
+    # create tab-delimited Manhattan plot data file
+    $man_file = $phe_prefix . ".manh";
+    open( $MANH, ">", "$man_file" )
+      or error_exit("$NAME: Can't open $man_file");
+
+    # write header to Manhattan plot data file
+    print $MANH "SNP\tCHR\tBP\tA1\tA2\tMAF\tNCHROBS\tP\tEFFECT\n";
+
+# look up genomic coords and MAF from hash and write to Manhattan plot data file
+    %c_lookup = %coord;
+    %f_lookup = %freq;
+    $nid      = 0;
+    while ( $line = <$PS> ) {
+        $nid++;
+        chomp $line;
+        @field  = split " ", $line;
+        $snp    = $field[0];
+        $effect = $field[1];
+        $pval   = $field[2];
+        $gc     = $c_lookup{$snp};
+        $maf    = $f_lookup{$snp};
+        if ( defined $gc && defined $maf ) {
+
+            # id's should be unique
+            $c_lookup{$snp} = -1;
+            $f_lookup{$snp} = -1;
+            print $MANH "$snp\t$gc\t$maf\t$pval\t$effect\n";
+        }
+        else {
+            push @ps_missing, $snp;
+        }
+    }
+    close($PS);
+    close($MANH);
+
+    # id's in .ps file but not present in .ped file
+    print "\n";
+    print "number of SNP ids in $ps_file for '$phe' phenotype: $nid\n";
+    $nmissing = scalar(@ps_missing);
+    if ( $nmissing == $nid ) {
+        error_exit("no matching id's found in $ps_file and $tped_file\n");
+        exit -1;
+    }
+    else {
+        print
+"number of SNP ids in $ps_file not present in $tped_file for '$phe' phenotype: $nmissing\n";
+        foreach (@ps_missing) {
+            print "$_ ";
+        }
+    }
+
+    # id's in .ped file but not present in .ps file
+    for my $id ( keys %c_lookup ) {
+        if ( $c_lookup{$id} != -1 ) {
+            push @coord_missing, $id;
+        }
+    }
+    $ncoord = keys(%coord);
+    print "\n";
+    print "number of SNP ids in $tped_file: $ncoord\n";
+    $nmissing = scalar(@ps_missing);
+    print
+      "number of SNP ids in $tped_file not present in $ps_file: $nmissing\n";
+    foreach (@coord_missing) {
+        print "$_ ";
+    }
+    print "\n";
+
+    # create Manhattan + QQ plot and highlight all SNPs with FDR < 0.1
+    system("GWAS_manhattanplots -q -b 0.1 -o $man_file $man_file");
+
+    # back to parent directory
+    cd("..");
+
+    return;
+}
+
+# display correct usage and exit
+sub usage {
+    print "\nProgram : $NAME:\n";
+    print "Version: $vers\n";
+    print
+"Contact: Tony Travis <tony.travis\@abdn.ac.uk> or Alex Douglas <a.douglas\@abdn.ac.uk\n";
+    print
+"Usage: $NAME -i in_prefix [-n threads] [-o out_prefix] [-k kinship] [-c cov_file] -t transform\n\n";
+    print "Mandatory parameters:\n\n";
+    print "  -i in_prefix: input prefix for .tped .tfam and .pheno files\n\n";
+    print "Optional parameters:\n\n";
+    print " -n threads: number of threads. Defaults to 1\n";
+    print
+      " -o out_prefix: prefix for output files. Defaults to [input_prefix]\n";
+    print
+" -k kinship: method used to calculate kinship matrix. Either 'IBS' (default) or 'BN' methods\n";
+    print " -c cov_file: covariate file name\n\n";
+    print
+" -t transform: phenotype transformation (BC = Box-Cox, default = none)\n\n";
+    print
+"More information about pique-run usage can be found in the PIQUE documentation\n\n";
+    exit -1;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 must_read
+ 
+ Parameters  : $name = name of file to open
+ Returns     : $file = file handle
+ Description : Must open a file for reading 
+
+=cut
+
+sub must_read {
+    my ($name) = @_;
+
+    my $file;    # file handle
+
+    if ( !open $file, '<', "$name" ) {
+        error_exit("Can't read $name");
+    }
+    return $file;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
+=head2 error_exit
+ 
+ Parameters  : $message
+ Returns     : null
+ Description : Display error message on STDERR and exit
+
+=cut
+
+sub error_exit {
+    my ($message) = @_;
+
+    print STDERR "$NAME: error - $message\n";
+    exit -1;
+}
