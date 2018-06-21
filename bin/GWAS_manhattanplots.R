@@ -1,4 +1,4 @@
-#' @(#)GWAS_manhattanplots.R  2017-10-09  A.Douglas and A.J.Travis
+#' @(#)GWAS_manhattanplots.R  2018-06-21  A.Douglas and A.J.Travis
 #'
 #' Heavily modified from original code provided by Stephen Turner
 #' http://GettingGeneticsDone.blogspot.com/
@@ -186,13 +186,12 @@ manhattan <- function(x, chr = "CHR", bp = "BP", p = "P", snp = "SNP", col = c("
       # suppress x-axis when stacking manahttan plots
       with(d, plot(pos, logp, cex = 0.5, xlim = xlim, ylim = ylim, ylab = "", 
         xaxt = "n", yaxt = "n", ...))
-      minor.tick(nx = 1, ny = 2)
     } else {
       
       # x-axis: chromosomal position, y-axis: -log10(p)
       with(d, plot(pos, logp, cex = 0.5, xlim = xlim, ylim = ylim, ylab = ylab, 
         xlab = xlab, yaxt = "n", ...))
-      minor.tick(nx = 5, ny = 2)
+      minor.tick(nx = 5, ny = 1)
     }
   } else {
     
@@ -202,19 +201,20 @@ manhattan <- function(x, chr = "CHR", bp = "BP", p = "P", snp = "SNP", col = c("
       # suppress x-axis when stacking manahttan plots
       with(d, plot(pos, logp, cex = 0.5, xlim = xlim, ylim = ylim, ylab = "", 
         xaxt = "n", yaxt = "n", type = "n", ...))
-      minor.tick(nx = 1, ny = 2)
     } else {
       
       # x-axis: chromosome number instead of position
       with(d, plot(pos, logp, cex = 0.5, xlim = xlim, ylim = ylim, ylab = "", 
-        xlab = xlabel, xaxt = "n", yaxt = "n", type = "n", ...))
-      minor.tick(nx = 1, ny = 2)
+        xlab = xlabel, xaxt = "n", yaxt = "n", ...))
       axis(1, at = ticks, labels = labs)
     }
   }
   
-  # y-axis annotation
-  axis(2, at = seq(0, ymax, 4))
+  # y-axis with custom tick marks
+  major <- seq(0, ymax, 4)
+  axis(2, at = major)
+  minor <- seq(0, ymax, 1)
+  axis(2, at = minor, tck = -0.04, labels = rep("", length(minor)))
   
   # SNPs
   icol <- 1
