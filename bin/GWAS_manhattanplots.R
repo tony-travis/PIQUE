@@ -1,4 +1,4 @@
-#' @(#)GWAS_manhattanplots.R  2018-06-21  A.Douglas and A.J.Travis
+#' @(#)GWAS_manhattanplots.R  2018-06-26  A.Douglas and A.J.Travis
 #'
 #' Heavily modified from original code provided by Stephen Turner
 #' http://GettingGeneticsDone.blogspot.com/
@@ -211,9 +211,10 @@ manhattan <- function(x, chr = "CHR", bp = "BP", p = "P", snp = "SNP", col = c("
   }
   
   # y-axis with custom tick marks
-  major <- seq(0, ymax, 4)
+  interval <- ((ymax%/%16) + 1) * 4
+  major <- seq(0, ymax, interval)
   axis(2, at = major)
-  minor <- seq(0, ymax, 1)
+  minor <- seq(0, ymax, interval/2)
   axis(2, at = minor, tck = -0.04, labels = rep("", length(minor)))
   
   # SNPs
