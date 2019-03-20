@@ -1,4 +1,4 @@
-#@(#)Makefile  2017-01-13  A.J.Travis and A.Douglas
+#@(#)Makefile  2018-10-12  A.J.Travis and A.Douglas
 
 #
 # pique: parallel identification of QTL's using EMMAX
@@ -11,7 +11,7 @@ DIR = /usr/local/pique
 
 EMMAX = /usr/local/bin/emmax
 PLINK = /usr/bin/p-link
-EIGENSTRAT = /usr/local/EIGENSOFT/bin/eigenstrat
+EIGENSTRAT = /usr/lib/eigensoft/smartpca
 R = /usr/bin/R
 FORECAST = /usr/lib/R/site-library/forecast
 PARALLEL = /usr/share/perl5/Parallel
@@ -52,13 +52,15 @@ plink_linux_x86_64.zip:
 	wget https://www.cog-genomics.org/static/bin/plink161202/$@
 
 # install "EIGENSOFT"
-$(EIGENSTRAT): EIG5.0.2.tar.gz
-	tar xvf $<
-	install -d /usr/local/EIGENSOFT/bin
-	install -C -o root -g root EIG5.0.2/bin/* /usr/local/EIGENSOFT/bin
-
-EIG5.0.2.tar.gz:
-	wget http://cdn1.sph.harvard.edu/wp-content/uploads/sites/181/2014/05/$@
+#$(EIGENSTRAT): EIG5.0.2.tar.gz
+#	tar xvf $<
+#	install -d /usr/local/EIGENSOFT/bin
+#	install -C -o root -g root EIG5.0.2/bin/* /usr/local/EIGENSOFT/bin
+#
+#EIG5.0.2.tar.gz:
+#	wget http://cdn1.sph.harvard.edu/wp-content/uploads/sites/181/2014/05/$@
+$(EIGENSTRAT):
+	apt install eigensoft
 
 # install R
 $(R):

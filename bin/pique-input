@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2017-07-24  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2018-10-12  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -271,13 +271,13 @@ sub programs {
     $PLINK = must_have("p-link");
 
     #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --missing-genotype 0";
-    $PLINK_OPT = "--missing-genotype 0";
+    $PLINK_OPT = "--noweb --missing-genotype 0";
 
     # generate or use previous "pique-input" generated .covar file
     if ( defined $opt_c ) {
 
         # look for "EIGENSOFT" smartpca
-        $EIGENSTRAT = must_have("smartpca");
+        $EIGENSTRAT = must_have("/usr/lib/eigensoft/smartpca");
     }
 
     # look for "emmax-kin"
@@ -838,7 +838,7 @@ sub smartpca {
     must_close($par_fh);
 
     # run smartpca
-    run("smartpca -p $par_file > $out-smartpca.log");
+    run("$EIGENSTRAT -p $par_file > $out-smartpca.log");
 
     # tidy up
     if ( !$opt_d ) {
