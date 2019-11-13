@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-#' @(#)GWAS_manhattanplots  2017-10-05  A.Douglas and A.J.Travis
+#' @(#)GWAS_manhattanplots  2019-11-12  A.Douglas and A.J.Travis
 
 suppressMessages(library(getopt))
 suppressMessages(library(optparse))
@@ -9,19 +9,20 @@ suppressMessages(library(optparse))
 # command-line arguments
 opt1 <- make_option(c("-b", "--bh"), action = "store", default = 0)
 opt2 <- make_option(c("-c", "--chromosome"), action = "store", default = "1:23")
-opt3 <- make_option(c("-i", "--input"), action = "store", default = NULL)
-opt4 <- make_option(c("-o", "--output"), action = "store", default = "manhattan")
-opt5 <- make_option(c("-q", "--qqplot"), action = "store_true", default = FALSE)
-opt6 <- make_option(c("-v", "--verbose"), action = "store_true", default = FALSE)
-opt7 <- make_option(c("-y", "--ymax"), action = "store", default = "max")
+opt3 <- make_option(c("-g", "--guide"), action = "store", default = FALSE)
+opt4 <- make_option(c("-i", "--input"), action = "store", default = NULL)
+opt5 <- make_option(c("-o", "--output"), action = "store", default = "manhattan")
+opt6 <- make_option(c("-q", "--qqplot"), action = "store_true", default = FALSE)
+opt7 <- make_option(c("-v", "--verbose"), action = "store_true", default = FALSE)
+opt8 <- make_option(c("-y", "--ymax"), action = "store", default = "max")
 
 #' debug in RStudio
-#' args <- c('-b', '0.1', '-q', '-y', '10', '-i', 'files.txt')
+#' args <- c('-b', '0.1', '4', '-q', '-y', '10', '-i', 'files.txt')
 #' opt <- parse_args(OptionParser(option_list = list(opt1, opt2, opt3, opt4, opt5, opt6, 
-#'   opt7)), args = args, positional_arguments = TRUE)
+#'   opt7, opt8)), args = args, positional_arguments = TRUE)
 
 opt <- parse_args(OptionParser(option_list = list(opt1, opt2, opt3, opt4, opt5, opt6, 
-  opt7)), positional_arguments = TRUE)
+  opt7, opt8)), positional_arguments = TRUE)
 
 # limit number of chromosomes
 chr.name <- parse(text = opt$options$chromosome)
@@ -143,7 +144,7 @@ for (i in 1:nplots) {
   
   # Manhattan plot
   manhattan(snp, markers = NULL, blocks = NULL, limitchromosomes = chr.limit, ymax = opt$options$ymax, 
-    suggestiveline = 4, genomewideline = FALSE, highlight = opt$options$bh, stack = stack)
+    suggestiveline = opt$options$guide, genomewideline = FALSE, highlight = opt$options$bh, stack = stack)
   
   # sub-plot title (left-justified)
   if (!is.null(opt$options$input)) {
