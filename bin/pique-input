@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2018-10-12  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2020-07-23  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -277,7 +277,7 @@ sub programs {
     if ( defined $opt_c ) {
 
         # look for "EIGENSOFT" smartpca
-        $EIGENSTRAT = must_have("/usr/lib/eigensoft/smartpca");
+        $EIGENSTRAT = must_have("/usr/bin/smartpca");
     }
 
     # look for "emmax-kin"
@@ -766,7 +766,7 @@ sub create_covar {
     $cov_fh = must_write($cov_file);
 
     # run Eigenstrat "smartpca" program
-    smartpca( $ped, $map, $evec, $opt_o );
+    run("$EIGENSTRAT -i $ped -a $map -b $ped -o $opt_o -p $opt_o -e $opt_o.eval -k $evec -l $opt_o-smartpca.log");
 
     # open "smartpca" output file
     $evec_fh = must_read("$opt_o.evec");
@@ -803,48 +803,6 @@ sub create_covar {
 
     # return number of outliers removed by "smartpca"
     return $outlier;
-}
-
-#/////////////////////////////////////////////////////////////////////////////
-
-=head2 smartpca
- 
- Parameters  : ped = PLINK format .ped file
-               map  = PLINK format .map file
-               evec = number of eigenvectors
-               out = output prefix
- Returns     : null
- Description : run smartpca
- 
-=cut
-
-sub smartpca {
-    my ( $ped, $map, $evec, $out ) = @_;
-
-    my $par_file;    # "smartpca" parameter file name
-    my $par_fh;      # "smartpca" parameter file handle
-
-    $par_file = "$out.par";
-    $par_fh   = must_write($par_file);
-
-    # create parameter file
-    print $par_fh "genotypename: $ped\n";
-    print $par_fh "snpname: $map\n";
-    print $par_fh "indivname: $ped\n";
-    print $par_fh "evecoutname: $out.evec\n";
-    print $par_fh "evaloutname: $out.eval\n";
-    print $par_fh "altnormstyle: NO\n";
-    print $par_fh "numoutevec: $evec\n";
-    must_close($par_fh);
-
-    # run smartpca
-    run("$EIGENSTRAT -p $par_file > $out-smartpca.log");
-
-    # tidy up
-    if ( !$opt_d ) {
-        must_unlink($par_file);
-    }
-    return;
 }
 
 #/////////////////////////////////////////////////////////////////////////////
