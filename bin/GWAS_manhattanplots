@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-#' @(#)GWAS_manhattanplots  2019-11-12  A.Douglas and A.J.Travis
+#' @(#)GWAS_manhattanplots  2021-01-25  A.Douglas and A.J.Travis
 
 suppressMessages(library(getopt))
 suppressMessages(library(optparse))
@@ -9,7 +9,7 @@ suppressMessages(library(optparse))
 # command-line arguments
 opt1 <- make_option(c("-b", "--bh"), action = "store", default = 0)
 opt2 <- make_option(c("-c", "--chromosome"), action = "store", default = "1:23")
-opt3 <- make_option(c("-g", "--guide"), action = "store", default = FALSE)
+opt3 <- make_option(c("-g", "--guide"), action = "store", default = 0)
 opt4 <- make_option(c("-i", "--input"), action = "store", default = NULL)
 opt5 <- make_option(c("-o", "--output"), action = "store", default = "manhattan")
 opt6 <- make_option(c("-q", "--qqplot"), action = "store_true", default = FALSE)
@@ -38,6 +38,9 @@ if (chr.class == "numeric") {
 
 # PNG output file
 output.file <- paste(sep = "", opt$options$output, ".png")
+
+# Benjamini-Hochberg output file
+bh.file <- paste(sep = "", opt$options$output, ".bh")
 
 # check usage
 if (is.null(opt$options$input)) {
@@ -141,6 +144,9 @@ for (i in 1:nplots) {
   mt <- mt.rawp2adjp(snp$P, proc = "BH")
   ind <- mt$index
   snp <- cbind(snp, BH = mt$adjp[order(ind), 2])
+
+  # write BH adjusted P values to file
+  write.table(snp, file = bh.file, sep = "\t", row.names = FALSE, col.names = TRUE)
   
   # Manhattan plot
   manhattan(snp, markers = NULL, blocks = NULL, limitchromosomes = chr.limit, ymax = opt$options$ymax, 
