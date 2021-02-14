@@ -1,4 +1,4 @@
-#@(#)Makefile  2018-10-12  A.J.Travis and A.Douglas
+#@(#)Makefile  2021-02-14  A.J.Travis and A.Douglas
 
 #
 # pique: parallel identification of QTL's using EMMAX
@@ -9,7 +9,7 @@
 # installation directory
 DIR = /usr/local/pique
 
-EMMAX = /usr/local/bin/emmax
+EMMAX = /usr//bin/emmax
 PLINK = /usr/bin/p-link
 EIGENSTRAT = /usr/lib/eigensoft/smartpca
 R = /usr/bin/R
@@ -37,9 +37,8 @@ install: $(TARGETS)
 #pique-run: bin/pique-run
 
 # install "EMMAX"
-$(EMMAX): emmax-beta-07Mar2010.tar.gz
-	tar xvf $<
-	install -C -o root -g root emmax-beta-07Mar2010/emmax* /usr/local/bin/
+$(EMMAX):
+	apt install emmax
 
 emmax-beta-07Mar2010.tar.gz:
 	wget http://genetics.cs.ucla.edu/emmax/$@
