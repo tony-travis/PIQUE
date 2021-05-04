@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2020-07-23  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2021-05-04  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -249,7 +249,7 @@ sub options {
     ) or usage();
 
     # input and output prefixes are mandatory
-    if ( !defined $opt_i && defined $opt_o ) {
+    if ( !( defined $opt_i && defined $opt_o ) ) {
         usage();
     }
 
@@ -339,6 +339,7 @@ sub files {
     $rmap_file = "$rc_prefix.map";
     $tped_file = "$opt_i.tped";
     $tfam_file = "$opt_i.tfam";
+
     if ( defined $opt_p ) {
         $pheno_file = $opt_p;
     }
@@ -766,7 +767,9 @@ sub create_covar {
     $cov_fh = must_write($cov_file);
 
     # run Eigenstrat "smartpca" program
-    run("$EIGENSTRAT -i $ped -a $map -b $ped -o $opt_o -p $opt_o -e $opt_o.eval -k $evec -l $opt_o-smartpca.log");
+    run(
+"$EIGENSTRAT -i $ped -a $map -b $ped -o $opt_o -p $opt_o -e $opt_o.eval -k $evec -l $opt_o-smartpca.log"
+    );
 
     # open "smartpca" output file
     $evec_fh = must_read("$opt_o.evec");
