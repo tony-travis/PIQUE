@@ -1,4 +1,4 @@
-#@(#)Makefile  2021-02-14  A.J.Travis and A.Douglas
+#@(#)Makefile  2021-05-22  A.J.Travis and A.Douglas
 
 #
 # pique: parallel identification of QTL's using EMMAX
@@ -9,7 +9,7 @@
 # installation directory
 DIR = /usr/local/pique
 
-EMMAX = /usr//bin/emmax
+EMMAX = /usr/bin/emmax
 PLINK = /usr/bin/p-link
 EIGENSTRAT = /usr/lib/eigensoft/smartpca
 R = /usr/bin/R
