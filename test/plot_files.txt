@@ -1,0 +1,4 @@
+sativas_GWAS/F_grain_Mo/F_grain_Mo_sativas_GWAS.manh	Grain Mo
+sativas_GWAS/F_grain_Zn/F_grain_Zn_sativas_GWAS.manh	Grain Zn
+sativas_GWAS/A_FT/A_FT_sativas_GWAS.manh	Aberdeen Flowering Time
+sativas_GWAS/A_PH/A_PH_sativas_GWAS.manh	Aberdeen Plant Height
