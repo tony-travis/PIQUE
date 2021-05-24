@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2021-05-04  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2021-05-24  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -267,11 +267,11 @@ sub options {
 
 sub programs {
 
-    # "plink" is called "p-link" on Ubuntu/Debian systems
-    $PLINK = must_have("p-link");
+    # warning: "plink" is putty-tools:/usr/bin/plink on Ubuntu/Debian systems
+    $PLINK = must_have("plink1.9");
 
     #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --missing-genotype 0";
-    $PLINK_OPT = "--noweb --missing-genotype 0";
+    $PLINK_OPT = "--missing-genotype 0";
 
     # generate or use previous "pique-input" generated .covar file
     if ( defined $opt_c ) {

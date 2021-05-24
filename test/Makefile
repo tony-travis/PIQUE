@@ -1,15 +1,16 @@
-#@(#)Makefile  2017-10-05  A.J.Travis and A.Douglas
+#@(#)Makefile  2021-05-24  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
 #
 
 WGET = wget --no-check-certificate 
-PLINK = p-link
+PLINK = plink1.9
 PIQUE-INPUT = pique-input
 PIQUE-RUN = pique-run
 PHENO_GROUP = rice_phenotype_group.txt
 PHENO = rice_phenotype.txt
+PLOT_FILES = plot_files.txt
 IPREFIX = sativas413
 OPREFIX = sativas_GWAS
 TPREFIX = sativas_GWAS_trans
@@ -20,22 +21,35 @@ OPT = -d -v
 TEST := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 PATH := $(realpath $(TEST)/../bin):$(PATH)
 
-all:  input run
+help:
+	@echo "Targets:"
+	@echo "\tinput"
+	@echo "\trun"
+	@echo "\ttrans"
+	@echo "\tgroup"
+	@echo "\ttest_vcf"
+	@echo "\tld"
+	@echo "\tblocks
+	@echo "\tplot"
+	@echo "\tall"
 
-debug:
-	which GWAS_manhattanplots
+all:  input run trans group test_vcf ld blocks plot
 
 input: $(IPREFIX).ped
 	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(OPREFIX) -p $(PHENO) -k -c -e 5
+	touch input
 
-run: $(OPREFIX)
+run: input
 	$(PIQUE-RUN) $(OPT) -i $(OPREFIX) -k IBS -c $(OPREFIX).covar -n $(THREADS)
+	touch run
 
 trans: $(IPREFIX).ped
+	rm -rf $(TPREFIX)
 	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(TPREFIX) -p $(PHENO) -k -c -e 5
 	$(PIQUE-RUN) $(OPT) -i $(TPREFIX) -k IBS -c $(TPREFIX).covar -n $(THREADS) -t BC
 
 group: $(IPREFIX).ped
+	rm -rf $(GPREFIX)
 	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(GPREFIX) -p $(PHENO_GROUP) -k -c -e 5
 	$(PIQUE-RUN) $(OPT) -i $(GPREFIX) -k IBS -c $(GPREFIX).covar -n $(THREADS)
 	for group in $(GROUPS); do \
@@ -43,18 +57,19 @@ group: $(IPREFIX).ped
 	    $(PIQUE-RUN) $(OPT) -i $$prefix -k IBS -n $(THREADS); \
 	done
 
-$(IPREFIX).ped:
+$(IPREFIX).ped $(IPREFIX).map:
 	$(WGET) http://ricediversity.org/data/sets/44kgwas/RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 	unzip RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 	mv -i ./RiceDiversity_44K_Genotypes_PLINK/sativas* .
 	rmdir RiceDiversity_44K_Genotypes_PLINK
 	rm RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 
-test: test.vcf
-	$(PIQUE-INPUT) $(OPT) -i $@ -f vcf -o $@_vcf -p $(PHENO) -k -c -e 5
-	$(PIQUE-RUN) -i $@_vcf -k IBS -c $@_vcf.covar -t $(THREADS)
+test_vcf: test_vcf.vcf
+	rm -rf $@_GWAS
+	$(PIQUE-INPUT) $(OPT) -i $@ -f vcf -o $@_GWAS -p $(PHENO) -k -c -e 5
+	$(PIQUE-RUN) -i $@_GWAS -k IBS -c $@_GWAS.covar -n $(THREADS)
 
-test.vcf: $(IPREFIX).ped $(IPREFIX).map
+test_vcf.vcf: $(IPREFIX).ped $(IPREFIX).map
 	$(PLINK) --file $(IPREFIX) --recode-vcf --out $(basename $@)
 
 ld:
@@ -64,17 +79,16 @@ ld:
 blocks:
 	$(PLINK) --file $(IPREFIX)_recode12 --blocks no-pheno-req --out $(OPREFIX)_blocks
 
-diff:
-	-diff -x '.??*' -x Makefile -x '*.log' -rq ../ref .
-
-plot: files.txt
-	GWAS_manhattanplots -b 0.1 -q -y 12 -i files.txt
+plot: $(PLOT_FILES) run
+	GWAS_manhattanplots -b 0.1 -q -y 12 -i $<
 
 clean:
-	rm -f RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 	rm -rf RiceDiversity_44K_Genotypes_PLINK sativas413*
 	rm -rf __MACOSX
-	rm -rf $(OPREFIX)* $(GPREFIX)*
+	rm -rf $(OPREFIX)* $(TPREFIX)* $(GPREFIX)*
+	rm -rf test_vcf*
+	rm -f input run
+	rm -f *.bh *.png
 	rm -f .pversion *.log
 
 clobber: clean
