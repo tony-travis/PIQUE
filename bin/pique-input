@@ -1058,7 +1058,7 @@ sub output {
 =cut
 
 sub tidy_up {
-    my @hit_list = <*.nosex *.log>;
+    my @hit_list = <$opt_i*.nosex $opt_i*.log>;
 
     if ( defined $opt_v ) {
         print "removing temp files...\n";
