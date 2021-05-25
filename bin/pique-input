@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2021-05-24  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2021-05-26  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -1049,16 +1049,14 @@ sub output {
  Description : tidy up files unless debugging
  External    : $opt_i = input prefix
              : $opt_o = output prefix
- Files       : $rped_file = recoded .ped file
-             : $rmap_file = recoded map file
-             : "$opt_i_recode12.nosex"
+ Files       : "$opt_i_recode12.nosex"
              : "$opt_i_recode12.log"
-             : "$opt_o.log"
+             : "$opt_o-pique-input.log"
 
 =cut
 
 sub tidy_up {
-    my @hit_list = <$opt_i*.nosex $opt_i*.log>;
+    my @hit_list = <$opt_i*.nosex $opt_i*.log $opt_o*.log>;
 
     if ( defined $opt_v ) {
         print "removing temp files...\n";
