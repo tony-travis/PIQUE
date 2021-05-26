@@ -209,11 +209,11 @@ my @gid_list;
         }
     }
 
-    # remove temporary files
-    tidy_up();
-
     # write end-time to log file
     system("date >> $logfile");
+
+    # remove temporary files
+    tidy_up();
 
     exit 0;
 }
