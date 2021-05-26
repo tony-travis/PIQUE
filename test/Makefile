@@ -1,4 +1,4 @@
-#@(#)Makefile  2021-05-24  A.J.Travis and A.Douglas
+#@(#)Makefile  2021-05-26  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -29,7 +29,7 @@ help:
 	@echo "\tgroup"
 	@echo "\ttest_vcf"
 	@echo "\tld"
-	@echo "\tblocks
+	@echo "\tblocks"
 	@echo "\tplot"
 	@echo "\tall"
 
@@ -72,7 +72,7 @@ test_vcf: test_vcf.vcf
 test_vcf.vcf: $(IPREFIX).ped $(IPREFIX).map
 	$(PLINK) --file $(IPREFIX) --recode-vcf --out $(basename $@)
 
-ld:
+ld: input
 	$(PLINK) --file $(IPREFIX)_recode12 --r --out $(OPREFIX)_r
 	$(PLINK) --file $(IPREFIX)_recode12 --r2 --out $(OPREFIX)_r2
 
