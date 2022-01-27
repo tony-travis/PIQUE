@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2021-05-26  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2022-01-27  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -386,7 +386,7 @@ sub recode {
     # convert .vcf to .ped + .map
     if ( $type eq "vcf" ) {
         must_exist("$input.vcf");
-        plink("--recode --vcf $input.vcf --out $input");
+        plink("--vcf $input.vcf --recode ped --out $input");
     }
 
     # convert .tped + .tfam to .ped + .map
@@ -399,7 +399,7 @@ sub recode {
     # recode .ped + .map
     must_exist("$input.ped");
     must_exist("$input.map");
-    plink("--recode12 --file $opt_i --out $output");
+    plink("--recode 12 --file $opt_i --out $output");
 
     # check output files
     must_exist("$output.ped");
@@ -919,7 +919,7 @@ sub transpose {
     if ($opt_v) {
         print "Transpose $prefix...\n";
     }
-    plink("--recode --transpose --file $prefix --out $prefix");
+    plink("--recode transpose --file $prefix --out $prefix");
     return;
 }
 

@@ -1,4 +1,4 @@
-#@(#)Makefile  2021-05-26  A.J.Travis and A.Douglas
+#@(#)Makefile  2022-01-27  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -70,7 +70,7 @@ test_vcf: test_vcf.vcf
 	$(PIQUE-RUN) -i $@_GWAS -k IBS -c $@_GWAS.covar -n $(THREADS)
 
 test_vcf.vcf: $(IPREFIX).ped $(IPREFIX).map
-	$(PLINK) --file $(IPREFIX) --recode-vcf --out $(basename $@)
+	$(PLINK) --file $(IPREFIX) --recode vcf --out $(basename $@)
 
 ld: input
 	$(PLINK) --file $(IPREFIX)_recode12 --r --out $(OPREFIX)_r
