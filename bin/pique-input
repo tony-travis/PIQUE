@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2022-01-27  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2024-04-18  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -55,7 +55,7 @@ my $opt_k = "IBS";
 my $opt_c;
 
 # number of Eigenvectors to include
-my $opt_e = 5;
+my $opt_e;
 
 # MAF: Minor Allele Frequency
 my $opt_m;
