@@ -4,7 +4,6 @@
 # PIQUE - Parallel Identification Of QTL's using EMMAX
 #
 
-WGET = wget --no-check-certificate 
 PLINK = plink1.9
 PIQUE-INPUT = pique-input
 PIQUE-RUN = pique-run
@@ -58,11 +57,9 @@ group: $(IPREFIX).ped
 	done
 
 $(IPREFIX).ped $(IPREFIX).map:
-	$(WGET) http://ricediversity.org/data/sets/44kgwas/RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
-	unzip RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
+	tar xf RiceDiversity_44K_Genotypes_PLINK.tar.xz
 	mv -i ./RiceDiversity_44K_Genotypes_PLINK/sativas* .
 	rmdir RiceDiversity_44K_Genotypes_PLINK
-	rm RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 
 test_vcf: test_vcf.vcf
 	rm -rf $@_GWAS
@@ -92,5 +89,4 @@ clean:
 	rm -f .pversion *.log
 
 clobber: clean
-	rm -f RiceDiversity.44K.MSU6.Genotypes_PLINK.zip
 	rm -f $(IPREFIX)_recode12.*
