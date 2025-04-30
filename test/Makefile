@@ -1,4 +1,4 @@
-#@(#)Makefile  2022-01-27  A.J.Travis and A.Douglas
+#@(#)Makefile  2025-04-30  A.J.Travis and A.Douglas, last modified by Étienne Mollier
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
