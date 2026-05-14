@@ -400,6 +400,7 @@ sub recode {
     must_exist("$input.ped");
     must_exist("$input.map");
     plink("--recode 12 ped --pedmap $opt_i --out $output");
+    system "swap-alleles $output.ped";
 
     # check output files
     must_exist("$output.ped");

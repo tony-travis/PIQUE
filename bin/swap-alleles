@@ -4,6 +4,7 @@
 # Swap plink2 12 allele codes to plink1.9 21 codes
 #
 
-sed 's/-9.*/-9/' $1 > /tmp/$$
-sed 's/.*-9.//' $1 | tr '[12]' '[21]' | paste /tmp/$$ - > $2
-rm -f /tmp/$$
+sed 's/-9.*/-9/' $1 > /tmp/$$.fam
+sed 's/.*-9.//' $1 | tr '[12]' '[21]' | paste /tmp/$$.fam - > /tmp/$$.ped
+rm -f /tmp/$$.fam
+mv /tmp/$$.ped $1
