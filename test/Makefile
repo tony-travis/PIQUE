@@ -1,4 +1,4 @@
-#@(#)Makefile  2025-04-30  A.J.Travis and A.Douglas, last modified by Étienne Mollier
+#@(#)Makefile  2026-05-13  A.J.Travis and A.Douglas, last modified by Étienne Mollier
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -15,7 +15,7 @@ OPREFIX = sativas_GWAS
 TPREFIX = sativas_GWAS_trans
 GPREFIX = sativas_group_GWAS
 GROUPS = ADMIX AUS IND TEJ TRJ
-THREADS = 16
+THREADS = 8
 OPT = -d -v
 TEST := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 PATH := $(realpath $(TEST)/../bin):$(PATH)

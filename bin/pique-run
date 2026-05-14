@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-run.pl  2017-07-17  A.J.Travis and A.Douglas
+#@(#)pique-run.pl  2026-05-14  A.J.Travis and A.Douglas
 
 #
 # Run emma-x with or without a covariate file for each phenotype
@@ -58,6 +58,9 @@ my $a1;
 
 # Allele 2 code (major allele)
 my $a2;
+
+# Provisional allele frequency
+my $prov;
 
 # Minor allele frequency
 my $maf;
@@ -182,7 +185,7 @@ my $opt_t = "none";
     $tped_file  = $opt_i . '.tped';
     $tfam_file  = $opt_i . '.tfam';
     $pheno_file = $opt_i . '.pheno';
-    $freq_file  = $opt_i . '.frq';
+    $freq_file  = $opt_i . '.afreq';
 
     # run single-threaded by default
     unless ( defined $opt_n ) {
@@ -292,7 +295,7 @@ my $opt_t = "none";
     }
     close($TPED);
 
-    # open .frq file and hash id's
+    # open .afreq file and hash id's
     $FREQ = must_read($freq_file);
     while ( $line = <$FREQ> ) {
         chomp $line;
@@ -301,8 +304,9 @@ my $opt_t = "none";
         $snp     = $field[1];
         $a1      = $field[2];
         $a2      = $field[3];
-        $maf     = $field[4];
-        $nchrobs = $field[5];
+	$prov    = $field[4];
+        $maf     = $field[5];
+        $nchrobs = $field[6];
 
         # id's must be unique
         if ( not defined( $freq{$snp} ) ) {
@@ -517,6 +521,7 @@ sub emmax {
     print "\n";
 
     # create Manhattan + QQ plot and highlight all SNPs with FDR < 0.1
+    print "GWAS_manhattanplots -q -b 0.1 -o $man_file $man_file\n";
     system("GWAS_manhattanplots -q -b 0.1 -o $man_file $man_file");
 
     # back to parent directory

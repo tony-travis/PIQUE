@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2024-04-18  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2026-05-13  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -268,10 +268,10 @@ sub options {
 sub programs {
 
     # warning: "plink" is putty-tools:/usr/bin/plink on Ubuntu/Debian systems
-    $PLINK = must_have("plink1.9");
+    $PLINK = must_have("plink2");
 
-    #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --missing-genotype 0";
-    $PLINK_OPT = "--missing-genotype 0";
+    #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --input-missing-genotype 0";
+    $PLINK_OPT = "--input-missing-genotype 0";
 
     # generate or use previous "pique-input" generated .covar file
     if ( defined $opt_c ) {
@@ -399,7 +399,7 @@ sub recode {
     # recode .ped + .map
     must_exist("$input.ped");
     must_exist("$input.map");
-    plink("--recode 12 --file $opt_i --out $output");
+    plink("--recode 12 ped --pedmap $opt_i --out $output");
 
     # check output files
     must_exist("$output.ped");
@@ -663,7 +663,7 @@ sub filter {
  External    : $opt_o = output prefix
  Files       : $prefix.ped = filtered .tped file
              : $prefix.map = filtered .tfam file
-             : $prefix.frq = output MAF file
+             : $prefix.afreq = output MAF file
  
 =cut
 
@@ -685,7 +685,7 @@ sub qc {
 
     # SNP QC
     if ($filt) {
-        plink("$filt --recode --file $prefix --out $prefix");
+        plink("$filt --recode --pedmap $prefix --out $prefix");
     }
     return;
 }
@@ -723,7 +723,7 @@ sub extract {
 
     # extract sub-group genotypes
     plink(
-"--file ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode --out $opt_o\_$group"
+"--pedmap ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode --out $opt_o\_$group"
     );
     return;
 }
@@ -909,7 +909,7 @@ sub read_covar {
              : $opt_o = output prefix
  Files       : $opt_o.tped = transposed .ped file
              : $opt_o.tfam = transposed .map file
-             : $opt_o.frq = MAF (Minor Allele frequency
+             : $opt_o.afreq = MAF (Minor Allele frequency
 
 =cut
 
@@ -919,7 +919,7 @@ sub transpose {
     if ($opt_v) {
         print "Transpose $prefix...\n";
     }
-    plink("--recode transpose --file $prefix --out $prefix");
+    plink("--recode transpose --pedmap $prefix --out $prefix");
     return;
 }
 
@@ -931,7 +931,7 @@ sub transpose {
  Parameters  : $prefix = input/output prefix for PLINK
  Returns     : null
  Description : Use plink to calculate MAF  (Minor Allele frequency)
- Files       : $prefix.frq = MAF
+ Files       : $prefix.afreq = MAF
 
 =cut
 
@@ -942,7 +942,7 @@ sub maf {
         print "\n";
         print "Calculating MAF...\n";
     }
-    plink("--freq --file $prefix --out $prefix");
+    plink("--freq --pedmap $prefix --out $prefix");
     return;
 }
 
