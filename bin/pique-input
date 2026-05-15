@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2026-05-13  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2026-05-15  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -384,23 +384,30 @@ sub recode {
     }
 
     # convert .vcf to .ped + .map
-    if ( $type eq "vcf" ) {
+    elsif ( $type eq "vcf" ) {
         must_exist("$input.vcf");
-        plink("--vcf $input.vcf --recode ped --out $input");
+        plink("--vcf $input.vcf --recode 12 ped --out $output");
+
+	# fix problem with "plink2" .vcf to .ped conversion
+	run("fix-vcf-ped $output.ped");
     }
 
     # convert .tped + .tfam to .ped + .map
-    if ( $type eq "tped" ) {
+    elsif ( $type eq "tped" ) {
         must_exist("$input.tped");
         must_exist("$input.tfam");
-        plink("--recode --tped $input.tped --tfam $input.tfam --out $input");
+        plink("--recode 12 ped --tped $input.tped --tfam $input.tfam --out $input");
     }
 
     # recode .ped + .map
-    must_exist("$input.ped");
-    must_exist("$input.map");
-    plink("--recode 12 ped --pedmap $opt_i --out $output");
-    system "swap-alleles $output.ped";
+    else {
+	must_exist("$input.ped");
+        must_exist("$input.map");
+        plink("--recode 12 ped --pedmap $opt_i --out $output");
+    }
+
+    # convert to plink1.9 allele codes for EMMAX
+    run("swap-alleles $output.ped");
 
     # check output files
     must_exist("$output.ped");
@@ -686,7 +693,7 @@ sub qc {
 
     # SNP QC
     if ($filt) {
-        plink("$filt --recode --pedmap $prefix --out $prefix");
+        plink("$filt --recode ped --pedmap $prefix --out $prefix");
     }
     return;
 }
@@ -724,7 +731,7 @@ sub extract {
 
     # extract sub-group genotypes
     plink(
-"--pedmap ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode --out $opt_o\_$group"
+"--pedmap ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode ped --out $opt_o\_$group"
     );
     return;
 }
@@ -920,7 +927,7 @@ sub transpose {
     if ($opt_v) {
         print "Transpose $prefix...\n";
     }
-    plink("--recode transpose --pedmap $prefix --out $prefix");
+    plink("--recode ped transpose --pedmap $prefix --out $prefix");
     return;
 }
 

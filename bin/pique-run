@@ -299,7 +299,7 @@ my $opt_t = "none";
     $FREQ = must_read($freq_file);
     while ( $line = <$FREQ> ) {
         chomp $line;
-        @field   = split " ", $line, 6;
+        @field   = split " ", $line, 7;
         $chr     = $field[0];
         $snp     = $field[1];
         $a1      = $field[2];

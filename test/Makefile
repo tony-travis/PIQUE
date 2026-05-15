@@ -1,10 +1,10 @@
-#@(#)Makefile  2026-05-13  A.J.Travis and A.Douglas, last modified by Étienne Mollier
+#@(#)Makefile  2026-05-14  A.J.Travis and A.Douglas, last modified by A.J.Travis
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
 #
 
-PLINK = plink1.9
+PLINK = plink2
 PIQUE-INPUT = pique-input
 PIQUE-RUN = pique-run
 PHENO_GROUP = rice_phenotype_group.txt
@@ -27,12 +27,10 @@ help:
 	@echo "\ttrans"
 	@echo "\tgroup"
 	@echo "\ttest_vcf"
-	@echo "\tld"
-	@echo "\tblocks"
 	@echo "\tplot"
 	@echo "\tall"
 
-all:  input run trans group test_vcf ld blocks plot
+all:  input run trans group test_vcf plot
 
 input: $(IPREFIX).ped
 	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(OPREFIX) -p $(PHENO) -k -c -e 5
@@ -67,14 +65,7 @@ test_vcf: test_vcf.vcf
 	$(PIQUE-RUN) -i $@_GWAS -k IBS -c $@_GWAS.covar -n $(THREADS)
 
 test_vcf.vcf: $(IPREFIX).ped $(IPREFIX).map
-	$(PLINK) --file $(IPREFIX) --recode vcf --out $(basename $@)
-
-ld: input
-	$(PLINK) --file $(IPREFIX)_recode12 --r --out $(OPREFIX)_r
-	$(PLINK) --file $(IPREFIX)_recode12 --r2 --out $(OPREFIX)_r2
-
-blocks:
-	$(PLINK) --file $(IPREFIX)_recode12 --blocks no-pheno-req --out $(OPREFIX)_blocks
+	$(PLINK) --pedmap $(IPREFIX) --recode vcf --out $(basename $@)
 
 plot: $(PLOT_FILES) run
 	GWAS_manhattanplots -b 0.1 -q -y 12 -i $<

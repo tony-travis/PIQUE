@@ -1,0 +1,8 @@
+#!/bin/bash
+#@(#)fix-vcf-ped  2026-05-14  A.J.Travis
+#
+# fix ID's in PED file generated from VCF file by plink2
+#
+
+sed -e 's/0\t//' -e 's/_/\t/' $1 > /tmp/$$.ped
+mv /tmp/$$.ped $1
