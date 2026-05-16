@@ -1,4 +1,4 @@
-#@(#)Makefile  2026-05-14  A.J.Travis and A.Douglas, last modified by A.J.Travis
+#@(#)Makefile  2026-05-16  A.J.Travis and A.Douglas, last modified by A.J.Travis
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -12,6 +12,7 @@ PHENO = rice_phenotype.txt
 PLOT_FILES = plot_files.txt
 IPREFIX = sativas413
 OPREFIX = sativas_GWAS
+HPREFIX = sativas_GWAS_het
 TPREFIX = sativas_GWAS_trans
 GPREFIX = sativas_group_GWAS
 GROUPS = ADMIX AUS IND TEJ TRJ
@@ -24,21 +25,33 @@ help:
 	@echo "Targets:"
 	@echo "\tinput"
 	@echo "\trun"
+	@echo "\tinput_het"
+	@echo "\trun_het"
 	@echo "\ttrans"
 	@echo "\tgroup"
 	@echo "\ttest_vcf"
 	@echo "\tplot"
 	@echo "\tall"
 
-all:  input run trans group test_vcf plot
+all:  input run input_het run_het trans group test_vcf plot
 
 input: $(IPREFIX).ped
+	rm -rf $(OPREFIX)
 	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(OPREFIX) -p $(PHENO) -k -c -e 5
-	touch input
+	touch $@
+
+input_het: $(IPREFIX).ped
+	rm -rf $(HPREFIX)
+	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(HPREFIX) -p $(PHENO) -k -c -e 5 -z 0.999
+	touch $@
 
 run: input
 	$(PIQUE-RUN) $(OPT) -i $(OPREFIX) -k IBS -c $(OPREFIX).covar -n $(THREADS)
-	touch run
+	touch $@
+
+run_het: input_het
+	$(PIQUE-RUN) $(OPT) -i $(HPREFIX) -k IBS -c $(HPREFIX).covar -n $(THREADS)
+	touch $@
 
 trans: $(IPREFIX).ped
 	rm -rf $(TPREFIX)
@@ -73,9 +86,9 @@ plot: $(PLOT_FILES) run
 clean:
 	rm -rf RiceDiversity_44K_Genotypes_PLINK sativas413*
 	rm -rf __MACOSX
-	rm -rf $(OPREFIX)* $(TPREFIX)* $(GPREFIX)*
+	rm -rf $(OPREFIX)* $(HPREFIX)* $(TPREFIX)* $(GPREFIX)*
 	rm -rf test_vcf*
-	rm -f input run
+	rm -f input run input_het run_het
 	rm -f *.bh *.png
 	rm -f .pversion *.log
 

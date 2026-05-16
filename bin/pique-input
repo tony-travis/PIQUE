@@ -63,6 +63,9 @@ my $opt_m;
 # missing: maximum per-SNP missing
 my $opt_x;
 
+# Heterozygosity: Minimum F coefficient estimate (Method of Moments)
+my $opt_z;
+
 #
 # executable programs
 #
@@ -153,6 +156,11 @@ my @gid_list;
 
     # MAF for all groups
     maf($opt_o);
+
+    # heterozygosity for all groups
+    if ( defined $opt_z ) {
+        het( $opt_o, $opt_z );
+    }
 
     # read existing .covar file or create one
     if ( defined $opt_c ) {
@@ -245,7 +253,9 @@ sub options {
         "n=s" => \$opt_n,
         "e=s" => \$opt_e,
         "m=s" => \$opt_m,
-        "x=s" => \$opt_x
+        "x=s" => \$opt_x,
+        "z=s" => \$opt_z
+
     ) or usage();
 
     # input and output prefixes are mandatory
@@ -270,7 +280,7 @@ sub programs {
     # warning: "plink" is putty-tools:/usr/bin/plink on Ubuntu/Debian systems
     $PLINK = must_have("plink2");
 
-    #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --input-missing-genotype 0";
+  #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --input-missing-genotype 0";
     $PLINK_OPT = "--input-missing-genotype 0";
 
     # generate or use previous "pique-input" generated .covar file
@@ -388,20 +398,22 @@ sub recode {
         must_exist("$input.vcf");
         plink("--vcf $input.vcf --recode 12 ped --out $output");
 
-	# fix problem with "plink2" .vcf to .ped conversion
-	run("fix-vcf-ped $output.ped");
+        # fix problem with "plink2" .vcf to .ped conversion
+        run("fix-vcf-ped $output.ped");
     }
 
     # convert .tped + .tfam to .ped + .map
     elsif ( $type eq "tped" ) {
         must_exist("$input.tped");
         must_exist("$input.tfam");
-        plink("--recode 12 ped --tped $input.tped --tfam $input.tfam --out $input");
+        plink(
+            "--recode 12 ped --tped $input.tped --tfam $input.tfam --out $input"
+        );
     }
 
     # recode .ped + .map
     else {
-	must_exist("$input.ped");
+        must_exist("$input.ped");
         must_exist("$input.map");
         plink("--recode 12 ped --pedmap $opt_i --out $output");
     }
@@ -754,8 +766,8 @@ sub extract {
 sub create_covar {
     my ( $ped, $map, $evec ) = @_;
 
-    my $line;    # line read from file
-    my @col;     # tab-delimited columns
+    my $line;       # line read from file
+    my @col;        # tab-delimited columns
     my $id;
     my $fam;
     my $ped_id;
@@ -956,6 +968,35 @@ sub maf {
 
 #/////////////////////////////////////////////////////////////////////////////
 
+=head2 het
+
+ Usage       : het()
+ Parameters  : $prefix = input/output prefix for PLINK
+	     : $min = minimum F coefficient
+ Returns     : null
+ Description : Remove samples with high heterozygosity estimated by F (Method of Moments)
+ Files       : $prefix.het = heterozygosity estimates
+	     : $prefix.hid = list of samples with low heterozygosity
+	     : $prefix.ped = filtered .ped file
+
+=cut
+
+sub het {
+    my ( $prefix, $min ) = @_;
+
+    if ($opt_v) {
+        print "\n";
+        print "Calculating heterozygosity...\n";
+    }
+    plink("--het --pedmap $prefix --out $prefix");
+    run("awk '\$6 < $min {print \$1\" \"\$2}' $prefix.het > $prefix.hid");
+    plink("--pedmap $prefix --remove $prefix.hid --make-bed --out $prefix");
+    plink("--bfile $prefix --recode ped -out $prefix");
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
 =head2 kin
  
  Usage       : kin()
@@ -1093,7 +1134,7 @@ sub usage {
     print "\n";
     print "Program: $NAME\n";
     print "Version: $VERSION\n";
-    print "Contact: Tony Travis <tony.travis\@abdn.ac.uk>\n";
+    print "Contact: Tony Travis <tony.travis\@minke-informatics.co.uk>\n";
     print "         Alex Douglas <a.douglas\@abdn.ac.uk>\n";
     print "\n";
     print "Usage: $NAME -i in_prefix -o out_prefix\n";
@@ -1125,6 +1166,7 @@ sub usage {
     print " -e n_pc: number of eigenvectors to keep from smartpca\n";
     print " -m MAF: Minor Allele Frequency\n";
     print " -x missing: maximum per-SNP missing\n";
+    print " -z F: remove samples with heterozygosity < F coeficient\n";
     print "\n";
     print "Further details and examples are given in the documentation\n";
     exit -1;
