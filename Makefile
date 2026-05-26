@@ -10,7 +10,7 @@
 DIR = /usr/local/pique
 
 EMMAX = /usr/bin/emmax
-PLINK = /usr/bin/p-link
+PLINK = /usr/bin/plink2
 EIGENSTRAT = /usr/lib/eigensoft/smartpca
 R = /usr/bin/R
 FORECAST = /usr/lib/R/site-library/forecast
@@ -43,12 +43,9 @@ $(EMMAX):
 emmax-beta-07Mar2010.tar.gz:
 	wget http://genetics.cs.ucla.edu/emmax/$@
 
-# install PLINK
+# install PLINK2
 $(PLINK):
-	apt install plink
-
-plink_linux_x86_64.zip:
-	wget https://www.cog-genomics.org/static/bin/plink161202/$@
+	apt install plink2
 
 # install "EIGENSOFT"
 #$(EIGENSTRAT): EIG5.0.2.tar.gz
