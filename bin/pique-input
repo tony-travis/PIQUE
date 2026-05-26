@@ -972,12 +972,15 @@ sub maf {
 
  Usage       : het()
  Parameters  : $prefix = input/output prefix for PLINK
-	     : $min = minimum F coefficient
+             : $min = minimum F inbreeding coefficient (suggested: 0.999 for highly
+             :        inbred lines; use lower values e.g. 0.5 for landrace populations)
  Returns     : null
- Description : Remove samples with high heterozygosity estimated by F (Method of Moments)
- Files       : $prefix.het = heterozygosity estimates
-	     : $prefix.hid = list of samples with low heterozygosity
-	     : $prefix.ped = filtered .ped file
+ Description : Remove samples with excess heterozygosity estimated by F (Method of Moments).
+             : Samples with F below $min are removed. Note: not appropriate for polyploid
+             : species (e.g. hexaploid wheat) where --het results are unreliable.
+ Files       : $prefix.het = per-sample heterozygosity estimates from PLINK
+             : $prefix.hid = FID/IID list of samples flagged for removal (F < $min)
+             : $prefix.ped = filtered .ped file
 
 =cut
 
@@ -989,9 +992,9 @@ sub het {
         print "Calculating heterozygosity...\n";
     }
     plink("--het --pedmap $prefix --out $prefix");
-    run("awk '\$6 < $min {print \$1\" \"\$2}' $prefix.het > $prefix.hid");
+    run("awk 'NR > 1 && \$6 < $min {print \$1\" \"\$2}' $prefix.het > $prefix.hid");
     plink("--pedmap $prefix --remove $prefix.hid --make-bed --out $prefix");
-    plink("--bfile $prefix --recode ped -out $prefix");
+    plink("--bfile $prefix --recode ped --out $prefix");
     return;
 }
 
@@ -1166,7 +1169,8 @@ sub usage {
     print " -e n_pc: number of eigenvectors to keep from smartpca\n";
     print " -m MAF: Minor Allele Frequency\n";
     print " -x missing: maximum per-SNP missing\n";
-    print " -z F: remove samples with heterozygosity < F coeficient\n";
+    print " -z F: remove samples with F inbreeding coefficient below F (suggested: 0.999\n";
+    print "        for highly inbred lines; use lower values e.g. 0.5 for landraces)\n";
     print "\n";
     print "Further details and examples are given in the documentation\n";
     exit -1;
