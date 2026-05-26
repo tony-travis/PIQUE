@@ -272,6 +272,13 @@ sub options {
     if ( $opt_i eq $opt_o ) {
         error_exit("input prefix same as output prefix");
     }
+
+    # validate F coefficient threshold
+    if ( defined $opt_z ) {
+        unless ( $opt_z =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/ && $opt_z >= 0 && $opt_z <= 1 ) {
+            error_exit("-z: F coefficient must be a number between 0 and 1");
+        }
+    }
     return;
 }
 
@@ -993,6 +1000,22 @@ sub het {
     }
     plink("--het --pedmap $prefix --out $prefix");
     run("awk 'NR > 1 && \$6 < $min {print \$1\" \"\$2}' $prefix.het > $prefix.hid");
+
+    # report accessions flagged for removal
+    open( my $hid, '<', "$prefix.hid" )
+      or error_exit("Cannot open $prefix.hid: $!");
+    my @removed = map { ( split " ", $_ )[1] } <$hid>;
+    close $hid;
+
+    if (@removed) {
+        print scalar @removed
+          . " accession(s) removed with F coefficient below $min:\n";
+        print "  " . join( "  ", @removed ) . "\n";
+    }
+    else {
+        print "No accessions removed (all have F coefficient >= $min)\n";
+    }
+
     plink("--pedmap $prefix --remove $prefix.hid --make-bed --out $prefix");
     plink("--bfile $prefix --recode ped --out $prefix");
     return;
