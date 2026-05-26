@@ -18,8 +18,9 @@ PACKAGES = emmax plink2 eigensoft libparallel-forkmanager-perl libreadonly-perl
 .PHONY: help all check-deps install-deps install clean clobber
 
 help:
-	@echo 'Type "sudo make check-deps" to check dependencies'
-	@echo 'Type "sudo make install" to install "pique"'
+	@echo 'Type "make check-deps"        to check dependencies without installing'
+	@echo 'Type "sudo make install-deps" to install dependencies only'
+	@echo 'Type "sudo make install"      to install dependencies and pique'
 
 all: install-deps
 	install -d $(DIR)/bin $(DIR)/doc
