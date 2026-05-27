@@ -9,73 +9,80 @@
 # installation directory
 DIR = /usr/local/pique
 
-EMMAX = /usr/bin/emmax
-PLINK = /usr/bin/p-link
-EIGENSTRAT = /usr/lib/eigensoft/smartpca
-R = /usr/bin/R
-FORECAST = /usr/lib/R/site-library/forecast
-PARALLEL = /usr/share/perl5/Parallel
-READONLY = /usr/share/perl5/Readonly.pm
 BIN = bin/GWAS_manhattanplots bin/pique-input bin/pique-run
 ETC = etc/profile.d/EIGENSOFT.sh etc/profile.d/pique.sh
 
-TARGETS = $(EMMAX) $(PLINK) $(EIGENSTRAT) $(R) $(FORECAST) $(READONLY) $(PARALLEL) $(BIN) $(ETC)
+# packages installed via apt (R handled separately)
+PACKAGES = emmax plink2 eigensoft libparallel-forkmanager-perl libreadonly-perl
+
+.PHONY: help all check-deps install-deps install clean clobber
 
 help:
-	@echo 'Type "sudo make install" to install "pique"'
+	@echo 'Type "make check-deps"        to check dependencies without installing'
+	@echo 'Type "sudo make install-deps" to install dependencies only'
+	@echo 'Type "sudo make install"      to install dependencies and pique'
 
-all: $(TARGETS)
-
-# install pique
-install: $(TARGETS)
+all: install-deps
 	install -d $(DIR)/bin $(DIR)/doc
 	install -C -o root -g root bin/* $(DIR)/bin
 	install -C -o root -g root etc/profile.d/* /etc/profile.d
 
-# perl scripts
-#pique-input: bin/pique-input
-#pique-run: bin/pique-run
+# check dependencies without installing
+check-deps:
+	@echo "==> Checking dependencies..."
+	@missing=""; \
+	for pkg in $(PACKAGES); do \
+		dpkg -s $$pkg >/dev/null 2>&1 || missing="$$missing $$pkg"; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "Missing packages:$$missing"; \
+	else \
+		echo "All apt dependencies are installed."; \
+	fi
+	@if dpkg -s r-base >/dev/null 2>&1; then \
+		echo "R is installed."; \
+		if dpkg -s r-cran-forecast >/dev/null 2>&1; then \
+			echo "r-cran-forecast is installed."; \
+		else \
+			echo "Advisory: r-cran-forecast is not installed. Run 'sudo make install' to install it."; \
+		fi \
+	else \
+		echo "Advisory: R is not installed. Please install R manually before running pique."; \
+	fi
 
-# install "EMMAX"
-$(EMMAX):
-	apt install emmax
+# install dependencies
+install-deps:
+	@echo "==> Checking and installing apt dependencies..."
+	@missing=""; \
+	for pkg in $(PACKAGES); do \
+		dpkg -s $$pkg >/dev/null 2>&1 || missing="$$missing $$pkg"; \
+	done; \
+	if [ -n "$$missing" ]; then \
+		echo "Installing:$$missing"; \
+		apt-get install -y $$missing; \
+	else \
+		echo "All apt dependencies already installed."; \
+	fi
+	@echo "==> Checking R and forecast..."
+	@if dpkg -s r-base >/dev/null 2>&1; then \
+		if dpkg -s r-cran-forecast >/dev/null 2>&1; then \
+			echo "r-cran-forecast already installed."; \
+		else \
+			echo "R is installed. Installing r-cran-forecast..."; \
+			apt-get install -y r-cran-forecast; \
+		fi \
+	else \
+		echo "Advisory: R is not installed. Please install R manually before running pique."; \
+		echo "Advisory: r-cran-forecast will not be installed until R is available."; \
+	fi
 
-emmax-beta-07Mar2010.tar.gz:
-	wget http://genetics.cs.ucla.edu/emmax/$@
-
-# install PLINK
-$(PLINK):
-	apt install plink
-
-plink_linux_x86_64.zip:
-	wget https://www.cog-genomics.org/static/bin/plink161202/$@
-
-# install "EIGENSOFT"
-#$(EIGENSTRAT): EIG5.0.2.tar.gz
-#	tar xvf $<
-#	install -d /usr/local/EIGENSOFT/bin
-#	install -C -o root -g root EIG5.0.2/bin/* /usr/local/EIGENSOFT/bin
-#
-#EIG5.0.2.tar.gz:
-#	wget http://cdn1.sph.harvard.edu/wp-content/uploads/sites/181/2014/05/$@
-$(EIGENSTRAT):
-	apt install eigensoft
-
-# install R
-$(R):
-	echo "Please install R"...
-
-# install CRAN forecast library
-$(FORECAST):
-	apt install r-cran-forecast
-
-# install Parallel::ForkManager
-$(PARALLEL):
-	apt install libparallel-forkmanager-perl
-
-# install Perl Readonly module
-$(READONLY):
-	apt install libreadonly-perl
+# install pique
+install: install-deps
+	@echo "==> Installing PIQUE to $(DIR)"
+	install -d $(DIR)/bin $(DIR)/doc
+	install -C -o root -g root bin/* $(DIR)/bin
+	install -C -o root -g root etc/profile.d/* /etc/profile.d
+	@echo "==> Done. Run: source /etc/profile.d/pique.sh"
 
 %.pdf: %.odt
 	lowriter --headless --convert-to pdf $< --outdir $$(dirname $<)
