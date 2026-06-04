@@ -13,6 +13,8 @@ PLOT_FILES = plot_files.txt
 IPREFIX = sativas413
 OPREFIX = sativas_GWAS
 HPREFIX = sativas_GWAS_het
+SNPHET_PREFIX  = sativas_GWAS_snphet
+SNPZHET_PREFIX = sativas_GWAS_snpzhet
 TPREFIX = sativas_GWAS_trans
 GPREFIX = sativas_group_GWAS
 GROUPS = ADMIX AUS IND TEJ TRJ
@@ -33,7 +35,7 @@ help:
 	@echo "\tplot"
 	@echo "\tall"
 
-all:  input run input_het run_het trans group test_vcf plot
+all:  input run input_het run_het input_snphet run_snphet input_snpzhet run_snpzhet trans group test_vcf plot
 
 input: $(IPREFIX).ped
 	rm -rf $(OPREFIX)
@@ -51,6 +53,24 @@ run: input
 
 run_het: input_het
 	$(PIQUE-RUN) $(OPT) -i $(HPREFIX) -k IBS -c $(HPREFIX).covar -n $(THREADS)
+	touch $@
+
+input_snphet: $(IPREFIX).ped
+	rm -rf $(SNPHET_PREFIX)
+	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPHET_PREFIX) -p $(PHENO) -k -c -e 5 -H 0.005
+	touch $@
+
+run_snphet: input_snphet
+	$(PIQUE-RUN) $(OPT) -i $(SNPHET_PREFIX) -k IBS -c $(SNPHET_PREFIX).covar -n $(THREADS)
+	touch $@
+
+input_snpzhet: $(IPREFIX).ped
+	rm -rf $(SNPZHET_PREFIX)
+	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPZHET_PREFIX) -p $(PHENO) -k -c -e 5 -H 0.005 -z 0.999
+	touch $@
+
+run_snpzhet: input_snpzhet
+	$(PIQUE-RUN) $(OPT) -i $(SNPZHET_PREFIX) -k IBS -c $(SNPZHET_PREFIX).covar -n $(THREADS)
 	touch $@
 
 trans: $(IPREFIX).ped
@@ -86,9 +106,9 @@ plot: $(PLOT_FILES) run
 clean:
 	rm -rf RiceDiversity_44K_Genotypes_PLINK sativas413*
 	rm -rf __MACOSX
-	rm -rf $(OPREFIX)* $(HPREFIX)* $(TPREFIX)* $(GPREFIX)*
+	rm -rf $(OPREFIX)* $(HPREFIX)* $(SNPHET_PREFIX)* $(SNPZHET_PREFIX)* $(TPREFIX)* $(GPREFIX)*
 	rm -rf test_vcf*
-	rm -f input run input_het run_het
+	rm -f input run input_het run_het input_snphet run_snphet input_snpzhet run_snpzhet
 	rm -f *.bh *.png
 	rm -f .pversion *.log
 

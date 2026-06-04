@@ -66,6 +66,9 @@ my $opt_x;
 # Heterozygosity: Minimum F coefficient estimate (Method of Moments)
 my $opt_z;
 
+# maximum per-SNP heterozygosity rate (0-1 proportion)
+my $opt_H;
+
 #
 # executable programs
 #
@@ -151,13 +154,20 @@ my @gid_list;
     # filter accessions present for phenotype and genotype
     $new_ped_file = filter( "../$rc_prefix", \@phe_list );
 
-    # QC for all groups
-    qc($opt_o);
+    # QC: ordering depends on whether SNP het filter is requested
+    if ( defined $opt_H ) {
+        qc( $opt_o, 'geno' );       # missingness first
+        snp_het( $opt_o, $opt_H );  # SNP het filter
+        qc( $opt_o, 'maf' );        # MAF after
+    }
+    else {
+        qc($opt_o);                 # both together (unchanged behaviour)
+    }
 
     # MAF for all groups
     maf($opt_o);
 
-    # heterozygosity for all groups
+    # sample-level heterozygosity filter
     if ( defined $opt_z ) {
         het( $opt_o, $opt_z );
     }
@@ -254,7 +264,8 @@ sub options {
         "e=s" => \$opt_e,
         "m=s" => \$opt_m,
         "x=s" => \$opt_x,
-        "z=s" => \$opt_z
+        "z=s" => \$opt_z,
+        "H=s" => \$opt_H
 
     ) or usage();
 
@@ -277,6 +288,13 @@ sub options {
     if ( defined $opt_z ) {
         unless ( $opt_z =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/ && $opt_z >= 0 && $opt_z <= 1 ) {
             error_exit("-z: F coefficient must be a number between 0 and 1");
+        }
+    }
+
+    # validate SNP heterozygosity threshold
+    if ( defined $opt_H ) {
+        unless ( $opt_H =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/ && $opt_H >= 0 && $opt_H <= 1 ) {
+            error_exit("-H: SNP heterozygosity rate must be a number between 0 and 1");
         }
     }
     return;
@@ -695,22 +713,18 @@ sub filter {
 =cut
 
 sub qc {
-    my ($prefix) = @_;
-    my $filt;
+    my ( $prefix, $only ) = @_;
+    my $filt = '';
 
-    if ($opt_v) {
+    if ( $opt_v && !defined $only ) {
         print "Quality control $prefix...\n";
     }
-
-    $filt = '';
-    if ( defined $opt_m ) {
-        $filt .= "--maf $opt_m ";
-    }
-    if ( defined $opt_x ) {
+    if ( ( !defined $only || $only eq 'geno' ) && defined $opt_x ) {
         $filt .= "--geno $opt_x ";
     }
-
-    # SNP QC
+    if ( ( !defined $only || $only eq 'maf' ) && defined $opt_m ) {
+        $filt .= "--maf $opt_m ";
+    }
     if ($filt) {
         plink("$filt --recode ped --pedmap $prefix --out $prefix");
     }
@@ -1023,6 +1037,61 @@ sub het {
 
 #/////////////////////////////////////////////////////////////////////////////
 
+=head2 snp_het
+
+ Usage       : snp_het($prefix, $max)
+ Parameters  : $prefix = input/output prefix for PLINK
+             : $max = maximum observed heterozygosity proportion (0-1)
+ Returns     : null
+ Description : Remove SNPs where the observed proportion of heterozygous
+             : individuals exceeds $max. Runs plink2 --hardy to get per-SNP
+             : O(HET_A1), then excludes variants above the threshold.
+ Files       : $prefix.hardy = per-SNP HWE statistics from plink2
+             : $prefix.sid   = variant IDs excluded by this filter
+
+=cut
+
+sub snp_het {
+    my ( $prefix, $max ) = @_;
+
+    if ($opt_v) {
+        print "\n";
+        print "Filtering SNPs by heterozygosity rate (max $max)...\n";
+    }
+
+    # O(HET_A1) at col 8 (index 7), variant ID at col 2 (index 1)
+    plink("--hardy --pedmap $prefix --out $prefix");
+
+    # parse .hardy directly: do not use run() here as run() appends >> $logfile
+    # which overrides any > redirect embedded in the command string
+    my $hardy_fh = must_read("$prefix.hardy");
+    <$hardy_fh>;    # skip header
+    my $sid = must_write("$prefix.sid");
+    my @removed;
+    while (<$hardy_fh>) {
+        my @f = split;
+        if ( $f[7] > $max ) {
+            print $sid "$f[1]\n";
+            push @removed, $f[1];
+        }
+    }
+    must_close($hardy_fh);
+    must_close($sid);
+
+    if (@removed) {
+        print scalar @removed
+          . " SNP(s) removed with heterozygosity rate above $max:\n";
+        print "  " . join( "  ", @removed ) . "\n";
+        plink("--pedmap $prefix --exclude $prefix.sid --recode ped --out $prefix");
+    }
+    else {
+        print "No SNPs removed (all have heterozygosity rate <= $max)\n";
+    }
+    return;
+}
+
+#/////////////////////////////////////////////////////////////////////////////
+
 =head2 kin
  
  Usage       : kin()
@@ -1166,6 +1235,7 @@ sub usage {
     print "Usage: $NAME -i in_prefix -o out_prefix\n";
     print "              [-d] [-v] [-f in_format] [-k kinship]\n";
     print "              [-p pheno_file] [-c covar_file [-e n_pc]]\n";
+    print "              [-x missing] [-H het_max] [-m MAF] [-z F]\n";
     print "\n";
     print "Mandatory parameters:\n";
     print "\n";
@@ -1192,6 +1262,9 @@ sub usage {
     print " -e n_pc: number of eigenvectors to keep from smartpca\n";
     print " -m MAF: Minor Allele Frequency\n";
     print " -x missing: maximum per-SNP missing\n";
+    print " -H het_max: maximum per-SNP heterozygosity rate (0-1); SNPs where the\n";
+    print "             proportion of heterozygous individuals exceeds het_max are\n";
+    print "             removed (applied after missingness filter, before MAF filter)\n";
     print " -z F: remove samples with F inbreeding coefficient below F (suggested: 0.999\n";
     print "        for highly inbred lines; use lower values e.g. 0.5 for landraces)\n";
     print "\n";
