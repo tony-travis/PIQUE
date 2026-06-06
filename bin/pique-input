@@ -1,5 +1,5 @@
 #!/usr/bin/perl -w
-#@(#)pique-input.pl  2026-05-15  A.J.Travis and A.Douglas
+#@(#)pique-input.pl  2026-06-06  A.J.Travis and A.Douglas
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -67,7 +67,7 @@ my $opt_x;
 my $opt_z;
 
 # maximum per-SNP heterozygosity rate (0-1 proportion)
-my $opt_H;
+my $opt_y;
 
 #
 # executable programs
@@ -155,13 +155,13 @@ my @gid_list;
     $new_ped_file = filter( "../$rc_prefix", \@phe_list );
 
     # QC: ordering depends on whether SNP het filter is requested
-    if ( defined $opt_H ) {
-        qc( $opt_o, 'geno' );       # missingness first
-        snp_het( $opt_o, $opt_H );  # SNP het filter
-        qc( $opt_o, 'maf' );        # MAF after
+    if ( defined $opt_y ) {
+        qc( $opt_o, 'geno' );         # missingness first
+        snp_het( $opt_o, $opt_y );    # SNP het filter
+        qc( $opt_o, 'maf' );          # MAF after
     }
     else {
-        qc($opt_o);                 # both together (unchanged behaviour)
+        qc($opt_o);                   # both together (unchanged behaviour)
     }
 
     # MAF for all groups
@@ -264,8 +264,8 @@ sub options {
         "e=s" => \$opt_e,
         "m=s" => \$opt_m,
         "x=s" => \$opt_x,
-        "z=s" => \$opt_z,
-        "H=s" => \$opt_H
+        "y=s" => \$opt_y,
+        "z=s" => \$opt_z
 
     ) or usage();
 
@@ -286,15 +286,21 @@ sub options {
 
     # validate F coefficient threshold
     if ( defined $opt_z ) {
-        unless ( $opt_z =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/ && $opt_z >= 0 && $opt_z <= 1 ) {
+        unless ( $opt_z =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/
+            && $opt_z >= 0
+            && $opt_z <= 1 )
+        {
             error_exit("-z: F coefficient must be a number between 0 and 1");
         }
     }
 
     # validate SNP heterozygosity threshold
-    if ( defined $opt_H ) {
-        unless ( $opt_H =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/ && $opt_H >= 0 && $opt_H <= 1 ) {
-            error_exit("-H: SNP heterozygosity rate must be a number between 0 and 1");
+    if ( defined $opt_y ) {
+        unless ( $opt_y =~ /^(?:0(?:\.\d+)?|1(?:\.0+)?)$/
+            && $opt_y >= 0
+            && $opt_y <= 1 )
+        {
+            error_exit("-y: SNP heterozygosity rate must be a number between 0 and 1");
         }
     }
     return;
@@ -305,7 +311,7 @@ sub programs {
     # warning: "plink" is putty-tools:/usr/bin/plink on Ubuntu/Debian systems
     $PLINK = must_have("plink2");
 
-  #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --input-missing-genotype 0";
+    #    $PLINK_OPT = "--chr-set 95 --allow-extra-chr --input-missing-genotype 0";
     $PLINK_OPT = "--input-missing-genotype 0";
 
     # generate or use previous "pique-input" generated .covar file
@@ -431,9 +437,7 @@ sub recode {
     elsif ( $type eq "tped" ) {
         must_exist("$input.tped");
         must_exist("$input.tfam");
-        plink(
-            "--recode 12 ped --tped $input.tped --tfam $input.tfam --out $input"
-        );
+        plink("--recode 12 ped --tped $input.tped --tfam $input.tfam --out $input");
     }
 
     # recode .ped + .map
@@ -543,8 +547,7 @@ sub store {
     # delete groups with < minimum number of genotypes (default = 20)
     while ( $gid = each %grp ) {
         if ( $grp{$gid} < $opt_n ) {
-            print
-              "Warning: group $gid ignored ($grp{$gid} < $opt_n genotypes)\n";
+            print "Warning: group $gid ignored ($grp{$gid} < $opt_n genotypes)\n";
             delete $grp{$gid};
         }
     }
@@ -662,8 +665,7 @@ sub filter {
 
     # id's in .ped file but not present in phenotype file
     if ($opt_v) {
-        print
-          "Checking concurrence of id's in .ped and .pheno input files...\n";
+        print "Checking concurrence of id's in .ped and .pheno input files...\n";
         print "\nTotal number of accession ids in $in_ped_file: $nped\n";
     }
     $nmissing = scalar(@ped_missing);
@@ -671,8 +673,7 @@ sub filter {
         error_exit("no matching id's found in $pheno_file and $in_ped_file\n");
     }
     else {
-        print
-"Number of accession id's in $in_ped_file not present in $pheno_file: $nmissing\n";
+        print "Number of accession id's in $in_ped_file not present in $pheno_file: $nmissing\n";
 
         foreach (@ped_missing) {
             print "'$_' ";
@@ -689,8 +690,7 @@ sub filter {
     print "\n";
     print "Total number of accession id's in $pheno_file: $nphe\n";
     $nmissing = scalar(@phe_missing);
-    print
-"Number of accession id's in $pheno_file not present in $in_ped_file: $nmissing\n";
+    print "Number of accession id's in $pheno_file not present in $in_ped_file: $nmissing\n";
     foreach (@phe_missing) {
         print "'$_' ";
     }
@@ -763,9 +763,7 @@ sub extract {
     must_close($gfile);
 
     # extract sub-group genotypes
-    plink(
-"--pedmap ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode ped --out $opt_o\_$group"
-    );
+    plink("--pedmap ../$opt_o/$opt_o --keep $opt_o\_$group\.pheno --recode ped --out $opt_o\_$group");
     return;
 }
 
@@ -808,9 +806,7 @@ sub create_covar {
     $cov_fh = must_write($cov_file);
 
     # run Eigenstrat "smartpca" program
-    run(
-"$EIGENSTRAT -i $ped -a $map -b $ped -o $opt_o -p $opt_o -e $opt_o.eval -k $evec -l $opt_o-smartpca.log"
-    );
+    run("$EIGENSTRAT -i $ped -a $map -b $ped -o $opt_o -p $opt_o -e $opt_o.eval -k $evec -l $opt_o-smartpca.log");
 
     # open "smartpca" output file
     $evec_fh = must_read("$opt_o.evec");
@@ -1022,8 +1018,7 @@ sub het {
     close $hid;
 
     if (@removed) {
-        print scalar @removed
-          . " accession(s) removed with F coefficient below $min:\n";
+        print scalar @removed . " accession(s) removed with F coefficient below $min:\n";
         print "  " . join( "  ", @removed ) . "\n";
     }
     else {
@@ -1079,8 +1074,7 @@ sub snp_het {
     must_close($sid);
 
     if (@removed) {
-        print scalar @removed
-          . " SNP(s) removed with heterozygosity rate above $max:\n";
+        print scalar @removed . " SNP(s) removed with heterozygosity rate above $max:\n";
         print "  " . join( "  ", @removed ) . "\n";
         plink("--pedmap $prefix --exclude $prefix.sid --recode ped --out $prefix");
     }
@@ -1110,12 +1104,10 @@ sub kin {
 
     if ($opt_v) {
         if ( $opt_k eq '-s' ) {
-            print
-"Creating $tped_prefix.hIBS.kin kinship file using IBS method...\n";
+            print "Creating $tped_prefix.hIBS.kin kinship file using IBS method...\n";
         }
         else {
-            print
-              "Creating $tped_prefix.hBN.kin kinship file using BN method...\n";
+            print "Creating $tped_prefix.hBN.kin kinship file using BN method...\n";
         }
     }
 
@@ -1235,7 +1227,7 @@ sub usage {
     print "Usage: $NAME -i in_prefix -o out_prefix\n";
     print "              [-d] [-v] [-f in_format] [-k kinship]\n";
     print "              [-p pheno_file] [-c covar_file [-e n_pc]]\n";
-    print "              [-x missing] [-H het_max] [-m MAF] [-z F]\n";
+    print "              [-m MAF] [-x missing] [-y het_max] [-z F]\n";
     print "\n";
     print "Mandatory parameters:\n";
     print "\n";
@@ -1253,8 +1245,7 @@ sub usage {
     print " -p pheno_file: phenotype file name\n";
     print "    Defaults to [in_prefix].pheno\n";
     print " -g group[,group...]: genotype sub-groups to be analysed\n";
-    print
-      " -n number: minimum number of genotypes in sub-group (default = 20)\n";
+    print " -n number: minimum number of genotypes in sub-group (default = 20)\n";
     print " -k kinship: method to calculate kinship matrix\n";
     print "    Either 'IBS' (default) or 'BN' methods\n";
     print " -c covar_file: generate covariate file [out_prefix].covar\n";
@@ -1262,7 +1253,7 @@ sub usage {
     print " -e n_pc: number of eigenvectors to keep from smartpca\n";
     print " -m MAF: Minor Allele Frequency\n";
     print " -x missing: maximum per-SNP missing\n";
-    print " -H het_max: maximum per-SNP heterozygosity rate (0-1); SNPs where the\n";
+    print " -y het_max: maximum per-SNP heterozygosity rate (0-1); SNPs where the\n";
     print "             proportion of heterozygous individuals exceeds het_max are\n";
     print "             removed (applied after missingness filter, before MAF filter)\n";
     print " -z F: remove samples with F inbreeding coefficient below F (suggested: 0.999\n";

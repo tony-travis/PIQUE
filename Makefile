@@ -1,4 +1,4 @@
-#@(#)Makefile  2021-05-22  A.J.Travis and A.Douglas
+#@(#)Makefile  2026-06-06  A.J.Travis and A.Douglas
 
 #
 # pique: parallel identification of QTL's using EMMAX
@@ -13,7 +13,7 @@ BIN = bin/GWAS_manhattanplots bin/pique-input bin/pique-run
 ETC = etc/profile.d/EIGENSOFT.sh etc/profile.d/pique.sh
 
 # packages installed via apt (R handled separately)
-PACKAGES = emmax plink2 eigensoft libparallel-forkmanager-perl libreadonly-perl
+PACKAGES = emmax plink2 eigensoft libparallel-forkmanager-perl libreadonly-perl r-base-core r-cran-forecast
 
 .PHONY: help all check-deps install-deps install clean clobber
 
@@ -39,16 +39,6 @@ check-deps:
 	else \
 		echo "All apt dependencies are installed."; \
 	fi
-	@if dpkg -s r-base >/dev/null 2>&1; then \
-		echo "R is installed."; \
-		if dpkg -s r-cran-forecast >/dev/null 2>&1; then \
-			echo "r-cran-forecast is installed."; \
-		else \
-			echo "Advisory: r-cran-forecast is not installed. Run 'sudo make install' to install it."; \
-		fi \
-	else \
-		echo "Advisory: R is not installed. Please install R manually before running pique."; \
-	fi
 
 # install dependencies
 install-deps:
@@ -62,18 +52,6 @@ install-deps:
 		apt-get install -y $$missing; \
 	else \
 		echo "All apt dependencies already installed."; \
-	fi
-	@echo "==> Checking R and forecast..."
-	@if dpkg -s r-base >/dev/null 2>&1; then \
-		if dpkg -s r-cran-forecast >/dev/null 2>&1; then \
-			echo "r-cran-forecast already installed."; \
-		else \
-			echo "R is installed. Installing r-cran-forecast..."; \
-			apt-get install -y r-cran-forecast; \
-		fi \
-	else \
-		echo "Advisory: R is not installed. Please install R manually before running pique."; \
-		echo "Advisory: r-cran-forecast will not be installed until R is available."; \
 	fi
 
 # install pique
@@ -91,4 +69,3 @@ clean:
 	rm -f *.log
 
 clobber: clean
-	rm -rf EIG5.0.2*  emmax-beta-07Mar2010*

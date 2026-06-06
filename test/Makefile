@@ -1,4 +1,4 @@
-#@(#)Makefile  2026-05-16  A.J.Travis and A.Douglas, last modified by A.J.Travis
+#@(#)Makefile  2026-06-06  A.J.Travis and A.Douglas, last modified by A.J.Travis
 
 #
 # PIQUE - Parallel Identification Of QTL's using EMMAX
@@ -29,6 +29,10 @@ help:
 	@echo "\trun"
 	@echo "\tinput_het"
 	@echo "\trun_het"
+	@echo "\tinput_snphet"
+	@echo "\trun_snphet"
+	@echo "\tinput_snpzhet"
+	@echo "\trun_snpzhet"
 	@echo "\ttrans"
 	@echo "\tgroup"
 	@echo "\ttest_vcf"
@@ -57,7 +61,7 @@ run_het: input_het
 
 input_snphet: $(IPREFIX).ped
 	rm -rf $(SNPHET_PREFIX)
-	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPHET_PREFIX) -p $(PHENO) -k -c -e 5 -H 0.005
+	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPHET_PREFIX) -p $(PHENO) -k -c -e 5 -y 0.005
 	touch $@
 
 run_snphet: input_snphet
@@ -66,7 +70,7 @@ run_snphet: input_snphet
 
 input_snpzhet: $(IPREFIX).ped
 	rm -rf $(SNPZHET_PREFIX)
-	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPZHET_PREFIX) -p $(PHENO) -k -c -e 5 -H 0.005 -z 0.999
+	$(PIQUE-INPUT) $(OPT) -i $(IPREFIX) -o $(SNPZHET_PREFIX) -p $(PHENO) -k -c -e 5 -y 0.005 -z 0.999
 	touch $@
 
 run_snpzhet: input_snpzhet
