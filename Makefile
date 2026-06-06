@@ -53,6 +53,8 @@ install-deps:
 	else \
 		echo "All apt dependencies already installed."; \
 	fi
+	echo "Correct 'fixgreen' BUG in /usr/bin/ploteig"
+	@sed -i '/fixgreen/s/^#*/#/' /usr/bin/ploteig
 
 # install pique
 install: install-deps
